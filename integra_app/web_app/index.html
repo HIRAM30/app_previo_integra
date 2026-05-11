@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Integra Del Centro — Reportes Aduanales</title>
+  <!--
+    ============================================================
+    Integra Del Centro, S.C.
+    Sistema de Reportes de Previo con Avería o Discrepancia
+    Web App para oficina — Fase 1 (archivo .integra local)
+    Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
+    Versión: 1.0
+    ============================================================
+    Uso: Abrir este archivo en Chrome o Edge.
+    No requiere servidor, no requiere instalación.
+    Para Fase 2: solo cambiar loadReporte() para hacer fetch()
+    al servidor en vez de leer el archivo local.
+    ============================================================
+  -->
+
+  <!-- jsPDF para generación de PDF en el navegador -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- jsPDF AutoTable para tablas en PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    /* ── Variables corporativas Integra Del Centro ── */
+    :root {
+      --azul:      #003087;
+      --azul-claro:#E8EDF5;
+      --rojo:      #B71C1C;
+      --rojo-claro:#FFEBEE;
+      --verde:     #2E7D32;
+      --naranja:   #E65100;
+      --gris:      #F5F5F5;
+      --gris-borde:#E0E0E0;
+      --texto:     #212121;
+      --texto-sec: #757575;
+      --sombra:    0 2px 8px rgba(0,0,0,0.12);
+      --radio:     8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #F0F2F5;
+      color: var(--texto);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--azul);
+      color: white;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--sombra);
+    }
+    header .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    header .logo span { font-size: 12px; font-weight: normal; opacity: 0.8; }
+    header .dev-credit { font-size: 11px; opacity: 0.6; }
+
+    /* ── Layout principal ── */
+    .main-container {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    /* ── Zona de drop ── */
+    .drop-zone {
+      border: 3px dashed var(--azul);
+      border-radius: 16px;
+      padding: 60px 24px;
+      text-align: center;
+      background: white;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 24px;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      background: var(--azul-claro);
+      border-color: var(--azul);
+    }
+    .drop-zone .icon { font-size: 64px; margin-bottom: 16px; }
+    .drop-zone h2 { color: var(--azul); margin-bottom: 8px; font-size: 22px; }
+    .drop-zone p  { color: var(--texto-sec); font-size: 14px; }
+    .drop-zone .btn-seleccionar {
+      margin-top: 20px;
+      background: var(--azul);
+      color: white;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .drop-zone .btn-seleccionar:hover { background: #002070; }
+
+    /* ── Panel del reporte ── */
+    #reporte-panel { display: none; }
+
+    /* ── Tarjeta ── */
+    .card {
+      background: white;
+      border-radius: var(--radio);
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: var(--sombra);
+    }
+
+    /* ── Sección header ── */
+    .seccion-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--azul);
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--azul-claro);
+    }
+
+    /* ── Grid de datos ── */
+    .datos-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .dato-item label {
+      display: block;
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--azul);
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+    .dato-item input, .dato-item textarea, .dato-item select {
+      width: 100%;
+      border: 1px solid var(--gris-borde);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--texto);
+      background: white;
+    }
+    .dato-item input:focus, .dato-item textarea:focus {
+      outline: none;
+      border-color: var(--azul);
+      box-shadow: 0 0 0 2px rgba(0,48,135,0.12);
+    }
+    .dato-item.full { grid-column: 1 / -1; }
+
+    /* ── Estado mercancía ── */
+    .estado-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .estado-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 2px solid var(--gris-borde);
+      cursor: pointer;
+      font-size: 13px;
+      user-select: none;
+      transition: all 0.15s;
+    }
+    .estado-chip input[type=checkbox] { display: none; }
+    .estado-chip.checked-verde  { border-color: var(--verde);   background: #E8F5E9; color: var(--verde); }
+    .estado-chip.checked-naranja{ border-color: var(--naranja); background: #FFF3E0; color: var(--naranja); }
+    .estado-chip.checked-rojo   { border-color: var(--rojo);    background: var(--rojo-claro); color: var(--rojo); }
+    .estado-chip.checked-azul   { border-color: var(--azul);    background: var(--azul-claro); color: var(--azul); }
+
+    /* ── Tabla de hallazgos ── */
+    .tabla-container { overflow-x: auto; }
+    table.hallazgos {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      min-width: 780px;
+    }
+    table.hallazgos thead tr {
+      background: var(--azul);
+      color: white;
+    }
+    table.hallazgos thead th {
+      padding: 10px 8px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    table.hallazgos tbody tr:nth-child(even) { background: #FAFAFA; }
+    table.hallazgos tbody tr.discrepancia { background: var(--rojo-claro); }
+    table.hallazgos td {
+      padding: 4px 4px;
+      border-bottom: 1px solid var(--gris-borde);
+    }
+    table.hallazgos td input {
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      padding: 5px 6px;
+      font-size: 12px;
+      background: transparent;
+    }
+    table.hallazgos td input:focus {
+      outline: none;
+      border-color: var(--azul);
+      background: white;
+    }
+    table.hallazgos td input.disc-input { color: var(--rojo); font-weight: bold; }
+    .btn-eliminar-fila {
+      background: none;
+      border: none;
+      color: #EF5350;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 2px 6px;
+    }
+    .btn-agregar-fila {
+      margin-top: 10px;
+      background: none;
+      border: 2px dashed var(--azul);
+      color: var(--azul);
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: bold;
+      width: 100%;
+    }
+    .btn-agregar-fila:hover { background: var(--azul-claro); }
+
+    /* ── Galería de fotos ── */
+    .foto-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .foto-card {
+      border-radius: var(--radio);
+      overflow: hidden;
+      border: 2px solid var(--gris-borde);
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .foto-card:hover { transform: scale(1.02); }
+    .foto-card img { width: 100%; height: 140px; object-fit: cover; display: block; }
+    .foto-card .foto-tipo {
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: bold;
+      text-align: center;
+    }
+    .tipo-averia   { background: #FFEBEE; color: var(--rojo); border-top: 2px solid var(--rojo); }
+    .tipo-mercancia{ background: var(--azul-claro); color: var(--azul); border-top: 2px solid var(--azul); }
+    .tipo-documento{ background: #FFF3E0; color: var(--naranja); border-top: 2px solid var(--naranja); }
+
+    /* ── Lightbox ── */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img { max-width: 90vw; max-height: 85vh; border-radius: 4px; }
+    .lightbox .lb-tipo {
+      margin-top: 12px;
+      color: white;
+      font-size: 14px;
+      font-weight: bold;
+      background: rgba(255,255,255,0.15);
+      padding: 4px 16px;
+      border-radius: 20px;
+    }
+    .lightbox .lb-close {
+      position: absolute;
+      top: 16px;
+      right: 20px;
+      color: white;
+      font-size: 32px;
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+
+    /* ── Botones de acción ── */
+    .acciones {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-pdf     { background: #D32F2F; color: white; }
+    .btn-pdf:hover { background: #B71C1C; }
+    .btn-guardar { background: var(--verde); color: white; }
+    .btn-guardar:hover { background: #1B5E20; }
+    .btn-nuevo   { background: var(--azul); color: white; }
+    .btn-nuevo:hover { background: #002070; }
+    .btn-outline  {
+      background: white;
+      color: var(--azul);
+      border: 2px solid var(--azul);
+    }
+    .btn-outline:hover { background: var(--azul-claro); }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #323232;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      z-index: 999;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    #toast.show { display: block; }
+    #toast.green { background: var(--verde); }
+    #toast.red   { background: var(--rojo); }
+
+    /* ── Discrepancia badge ── */
+    .disc-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--rojo-claro);
+      color: var(--rojo);
+      border: 1px solid #EF9A9A;
+      border-radius: 12px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    /* ── Meta del reporte ── */
+    .reporte-meta {
+      background: var(--azul-claro);
+      border-left: 4px solid var(--azul);
+      border-radius: 0 var(--radio) var(--radio) 0;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: var(--azul);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .acciones { flex-direction: column; }
+      .btn { justify-content: center; }
+      .datos-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Print ── */
+    @media print {
+      header, .acciones, .drop-zone, #reporte-meta-bar { display: none !important; }
+      .card { box-shadow: none; border: 1px solid var(--gris-borde); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════ -->
+<header>
+  <div class="logo">
+    <span style="font-size:26px;">🏢</span>
+    <div>
+      Integra Del Centro, S.C.
+      <br><span>Sistema de Reportes Aduanales — Web App</span>
+    </div>
+  </div>
+  <div class="dev-credit">Dev: HIRAM JAFET VELAZQUEZ SANTANDER</div>
+</header>
+
+<!-- ═══ CONTENIDO PRINCIPAL ════════════════════════════════════ -->
+<div class="main-container">
+
+  <!-- ── Zona de importar archivo ── -->
+  <div class="drop-zone" id="drop-zone"
+       ondragover="ev(event,'dragover')"
+       ondragleave="ev(event,'dragleave')"
+       ondrop="drop(event)">
+    <div class="icon">📂</div>
+    <h2>Importar Reporte desde el Teléfono</h2>
+    <p>Arrastra aquí el archivo <strong>.integra</strong> generado en la app del teléfono</p>
+    <p style="margin-top:6px;font-size:12px;color:#9E9E9E;">
+      O envíatelo por WhatsApp, correo o USB y ábrelo desde aquí
+    </p>
+    <button class="btn-seleccionar" onclick="document.getElementById('file-input').click()">
+      📁 Seleccionar archivo .integra
+    </button>
+    <input type="file" id="file-input" accept=".integra,.json"
+           style="display:none" onchange="fileSelected(event)">
+  </div>
+
+  <!-- ── Panel del reporte (se muestra al cargar) ── -->
+  <div id="reporte-panel">
+
+    <!-- Acciones principales -->
+    <div class="acciones">
+      <button class="btn btn-pdf" onclick="generarPDF()">
+        📄 Generar PDF Oficial
+      </button>
+      <button class="btn btn-guardar" onclick="guardarLocal()">
+        💾 Guardar en este equipo
+      </button>
+      <button class="btn btn-nuevo" onclick="nuevoReporte()">
+        ➕ Nuevo Reporte
+      </button>
+      <button class="btn btn-outline" onclick="document.getElementById('file-input').click()">
+        📂 Cargar otro archivo
+      </button>
+    </div>
+
+    <!-- Meta del reporte -->
+    <div class="reporte-meta" id="reporte-meta"></div>
+
+    <!-- ─ SECCIÓN 1: Importador ─────────────────────────── -->
+    <div class="card">
+      <div class="seccion-header">🏢 Datos del Importador</div>
+      <div class="datos-grid">
+        <div class="dato-item">
+          <label>Importador</label>
+          <input type="text" id="f-importador">
+        </div>
+        <div class="dato-item">
+          <label>Proveedor</label>
+          <input type="text" id="f-proveedor">
+        </div>
+        <div class="dato-item">
+          <label>Recinto Fiscal</label>
+          <input type="text" id="f-recinto">
+        </div>
+        <div class="dato-item">
+          <label>Realiza Previo</label>
+          <input type="text" id="f-realiza">
+        </div>
+      </div>
+    </div>
+
+    <!-- ─ SECCIÓN 2: Embarque ─────────────────────────────── -->
+    <div class="card">
+      <div class="seccion-header">🚢 Datos del Embarque</div>
+      <div class="datos-grid">
+        <div class="dato-item">
+          <label>Referencia / Pedimento *</label>
+          <input type="text" id="f-referencia" style="font-weight:bold;">
+        </div>
+        <div class="dato-item">
+          <label>Guía BL Master / AWB</label>
+          <input type="text" id="f-guia">
+        </div>
+        <div class="dato-item">
+          <label>Fecha de Entrada</label>
+          <input type="date" id="f-fechaEntrada">
+        </div>
+        <div class="dato-item">
+          <label>Número de Bultos</label>
+          <input type="number" id="f-bultos">
+        </div>
+        <div class="dato-item">
+          <label>Peso Bruto (kg)</label>
+          <input type="number" id="f-peso">
+        </div>
+      </div>
+    </div>
+
+    <!-- ─ SECCIÓN 3: Detalle del Previo ────────────────────── -->
+    <div class="card">
+      <div class="seccion-header">📅 Detalle del Previo</div>
+      <div class="datos-grid">
+        <div class="dato-item">
+          <label>Fecha Solicitud</label>
+          <input type="date" id="f-fechaSolicitud">
+        </div>
+        <div class="dato-item">
+          <label>Fecha y Hora Inicio</label>
+          <input type="datetime-local" id="f-inicio">
+        </div>
+        <div class="dato-item">
+          <label>Fecha y Hora Término</label>
+          <input type="datetime-local" id="f-termino">
+        </div>
+      </div>
+
+      <div style="margin-top:14px">
+        <div style="font-size:12px;font-weight:bold;color:var(--azul);margin-bottom:8px;">
+          ESTADO DE LA MERCANCÍA
+        </div>
+        <div class="estado-grid">
+          <label class="estado-chip" id="chip-completa" onclick="toggleChip('chip-completa','checked-verde')">
+            <span>✓</span> Completa
+          </label>
+          <label class="estado-chip" id="chip-faltantes" onclick="toggleChip('chip-faltantes','checked-naranja')">
+            <span>⚠</span> Faltantes
+          </label>
+          <label class="estado-chip" id="chip-sobrantes" onclick="toggleChip('chip-sobrantes','checked-rojo')">
+            <span>＋</span> Sobrantes
+          </label>
+          <label class="estado-chip" id="chip-carga-completa" onclick="toggleChip('chip-carga-completa','checked-azul')">
+            <span>📦</span> Carga Completa
+          </label>
+          <label class="estado-chip" id="chip-carga-parcial" onclick="toggleChip('chip-carga-parcial','checked-azul')">
+            <span>📦</span> Carga Parcial
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-top:14px">
+        <div class="dato-item full">
+          <label>Observaciones e Incidencias</label>
+          <textarea id="f-observaciones" rows="3"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─ SECCIÓN 4: Tabla de Hallazgos ────────────────────── -->
+    <div class="card">
+      <div class="seccion-header" style="justify-content:space-between;">
+        <span>📋 Observaciones y Hallazgos</span>
+        <span id="disc-count-badge"></span>
+      </div>
+      <div class="tabla-container">
+        <table class="hallazgos" id="tabla-hallazgos">
+          <thead>
+            <tr>
+              <th style="width:120px">No Factura</th>
+              <th style="width:110px">No Partida</th>
+              <th style="width:200px">No Parte</th>
+              <th style="width:100px">Cant. Factura</th>
+              <th style="width:100px">Conteo</th>
+              <th style="width:100px">Marca</th>
+              <th style="width:110px">Modelo</th>
+              <th style="width:80px">Observ.</th>
+              <th style="width:36px"></th>
+            </tr>
+          </thead>
+          <tbody id="hallazgos-body"></tbody>
+        </table>
+      </div>
+      <button class="btn-agregar-fila" onclick="agregarFila()">
+        ＋ Agregar hallazgo
+      </button>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
+        <label style="font-size:12px;font-weight:bold;color:var(--azul);">
+          TOTAL DE MERCANCÍAS:
+        </label>
+        <input type="text" id="f-total" style="width:140px;border:1px solid var(--gris-borde);border-radius:6px;padding:6px 10px;font-size:13px;">
+      </div>
+    </div>
+
+    <!-- ─ SECCIÓN 5: Evidencia fotográfica ──────────────────── -->
+    <div class="card">
+      <div class="seccion-header">📷 Evidencia Fotográfica</div>
+      <div class="foto-grid" id="foto-grid">
+        <p style="color:var(--texto-sec);font-size:13px;">Cargando fotos...</p>
+      </div>
+    </div>
+
+  </div><!-- /reporte-panel -->
+
+</div><!-- /main-container -->
+
+<!-- ── Lightbox ── -->
+<div class="lightbox" id="lightbox" onclick="cerrarLightbox()">
+  <button class="lb-close" onclick="cerrarLightbox()">✕</button>
+  <img id="lb-img" src="" alt="">
+  <div class="lb-tipo" id="lb-tipo"></div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast"></div>
+
+<script>
+// ============================================================
+// Integra Del Centro, S.C.
+// Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
+// Web App — Lógica principal
+// ============================================================
+
+'use strict';
+
+// ── Estado global ─────────────────────────────────────────────
+let _reporte     = null;   // Datos del reporte cargado
+let _fotos       = [];     // Array de { tipo, base64, nombre }
+let _filaId      = 0;      // Contador de filas de hallazgos
+
+// ── Drag & Drop ───────────────────────────────────────────────
+
+/** Maneja los eventos de drag sobre la zona de drop */
+function ev(event, tipo) {
+  event.preventDefault();
+  const zone = document.getElementById('drop-zone');
+  if (tipo === 'dragover') zone.classList.add('dragover');
+  else zone.classList.remove('dragover');
+}
+
+/** Procesa el archivo soltado en la zona de drop */
+function drop(event) {
+  event.preventDefault();
+  document.getElementById('drop-zone').classList.remove('dragover');
+  const file = event.dataTransfer.files[0];
+  if (file) leerArchivo(file);
+}
+
+/** Procesa el archivo seleccionado con el input */
+function fileSelected(event) {
+  const file = event.target.files[0];
+  if (file) leerArchivo(file);
+}
+
+/** Lee el archivo .integra y lo parsea */
+function leerArchivo(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      cargarReporte(data);
+    } catch(err) {
+      toast('Error: el archivo no es válido. ¿Es un archivo .integra?', 'red');
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+// ── Carga del reporte ─────────────────────────────────────────
+
+/**
+ * Carga el reporte en la interfaz.
+ * Este es el punto de entrada que en Fase 2 se reemplaza por:
+ *   const data = await fetch('/api/reportes/' + id).then(r => r.json());
+ *   cargarReporte(data);
+ */
+function cargarReporte(data) {
+  _reporte = data.reporte;
+  _fotos   = data.fotos || [];
+
+  // Metadatos del archivo
+  const meta = document.getElementById('reporte-meta');
+  meta.innerHTML = `
+    <strong>Archivo cargado:</strong>
+    Exportado ${new Date(data.exportado).toLocaleString('es-MX')} •
+    Empresa: ${data.empresa} •
+    Generado por: <strong>${data.exportadoPor}</strong> •
+    Versión ${data.version}
+  `;
+
+  // Llenar campos
+  _llenarCampos(_reporte);
+  _llenarHallazgos(_reporte.hallazgos || []);
+  _llenarFotos(_fotos);
+
+  // Mostrar panel y ocultar drop zone
+  document.getElementById('drop-zone').style.display = 'none';
+  document.getElementById('reporte-panel').style.display = 'block';
+
+  toast(`✓ Reporte cargado: ${_reporte.referencia}`, 'green');
+}
+
+/** Llena todos los campos del formulario con los datos del reporte */
+function _llenarCampos(r) {
+  set('f-importador', r.importador  || '');
+  set('f-proveedor',  r.proveedor   || '');
+  set('f-recinto',    r.recintoFiscal || '');
+  set('f-realiza',    r.realizaPrevio || '');
+  set('f-referencia', r.referencia  || '');
+  set('f-guia',       r.guiaBLMaster || '');
+  set('f-bultos',     r.bultos      || '');
+  set('f-peso',       r.pesoBruto   || '');
+  set('f-observaciones', r.observacionesIncidencias || '');
+  set('f-total',      r.totalMercancias || '');
+
+  // Fechas (convertir ISO a formato del input)
+  if (r.fechaEntrada) set('f-fechaEntrada', r.fechaEntrada.substring(0,10));
+  if (r.fechaSolicitud) set('f-fechaSolicitud', r.fechaSolicitud.substring(0,10));
+  if (r.fechaHoraInicio) set('f-inicio', r.fechaHoraInicio.substring(0,16));
+  if (r.fechaHoraTermino) set('f-termino', r.fechaHoraTermino.substring(0,16));
+
+  // Estado mercancía
+  const em = r.estadoMercancia || {};
+  if (em.completa)     chip('chip-completa',      'checked-verde');
+  if (em.faltantes)    chip('chip-faltantes',     'checked-naranja');
+  if (em.sobrantes)    chip('chip-sobrantes',     'checked-rojo');
+  if (em.cargaCompleta) chip('chip-carga-completa','checked-azul');
+  else                  chip('chip-carga-parcial', 'checked-azul');
+}
+
+/** Crea las filas de la tabla de hallazgos */
+function _llenarHallazgos(hallazgos) {
+  const tbody = document.getElementById('hallazgos-body');
+  tbody.innerHTML = '';
+  if (hallazgos.length === 0) {
+    agregarFila(); // Al menos una fila vacía
+    return;
+  }
+  hallazgos.forEach(h => agregarFila(h));
+  actualizarDiscrepancias();
+}
+
+/** Muestra las fotos en el grid */
+function _llenarFotos(fotos) {
+  const grid = document.getElementById('foto-grid');
+  if (!fotos || fotos.length === 0) {
+    grid.innerHTML = '<p style="color:var(--texto-sec);font-size:13px;">No hay fotos en este reporte.</p>';
+    return;
+  }
+
+  // Ordenar: Documentos → Averías → Mercancía
+  const orden = { 'Averia': 1, 'Mercancia': 3 };
+  const sorted = [...fotos].sort((a, b) => {
+    const oa = orden[a.tipo] || 2;
+    const ob = orden[b.tipo] || 2;
+    return oa - ob;
+  });
+
+  grid.innerHTML = sorted.map((f, i) => {
+    const tipoClass = f.tipo === 'Averia' ? 'tipo-averia'
+                    : f.tipo === 'Mercancia' ? 'tipo-mercancia'
+                    : 'tipo-documento';
+    const src = `data:${f.mimeType || 'image/jpeg'};base64,${f.base64}`;
+    return `
+      <div class="foto-card" onclick="verFoto('${i}', '${escapeAttr(src)}', '${escapeAttr(f.tipo)}')">
+        <img src="${src}" alt="${f.tipo}" loading="lazy">
+        <div class="foto-tipo ${tipoClass}">${f.tipo}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Tabla de hallazgos ─────────────────────────────────────────
+
+/**
+ * Agrega una fila a la tabla de hallazgos.
+ * Si se pasa [h], pre-llena los datos.
+ */
+function agregarFila(h) {
+  const id = ++_filaId;
+  h = h || {};
+  const tbody = document.getElementById('hallazgos-body');
+  const tr = document.createElement('tr');
+  tr.id = `fila-${id}`;
+  tr.innerHTML = `
+    <td><input type="text" value="${esc(h.noFactura)}"      oninput="checkDisc(${id})" style="text-transform:uppercase"></td>
+    <td><input type="text" value="${esc(h.noPartida)}"      oninput="checkDisc(${id})" style="text-transform:uppercase"></td>
+    <td><input type="text" value="${esc(h.noParte)}"        oninput="checkDisc(${id})" style="text-transform:uppercase"></td>
+    <td><input type="text" value="${esc(h.cantidadFactura)}" oninput="checkDisc(${id})" class="cant" id="cf-${id}"></td>
+    <td><input type="text" value="${esc(h.conteo)}"          oninput="checkDisc(${id})" class="cont" id="ct-${id}"></td>
+    <td><input type="text" value="${esc(h.marca)}"           style="text-transform:uppercase"></td>
+    <td><input type="text" value="${esc(h.modelo)}"          style="text-transform:uppercase"></td>
+    <td><input type="text" value="${esc(h.observaciones)}"></td>
+    <td><button class="btn-eliminar-fila" onclick="eliminarFila(${id})" title="Eliminar">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+  checkDisc(id);
+}
+
+/** Elimina una fila de hallazgos */
+function eliminarFila(id) {
+  const fila = document.getElementById(`fila-${id}`);
+  if (fila) fila.remove();
+  actualizarDiscrepancias();
+}
+
+/** Verifica si hay discrepancia en una fila y aplica el estilo */
+function checkDisc(id) {
+  const cf  = document.getElementById(`cf-${id}`);
+  const ct  = document.getElementById(`ct-${id}`);
+  const fila = document.getElementById(`fila-${id}`);
+  if (!cf || !ct || !fila) return;
+
+  const hayDisc = cf.value.trim() !== '' &&
+                  ct.value.trim() !== '' &&
+                  cf.value.trim() !== ct.value.trim();
+
+  fila.classList.toggle('discrepancia', hayDisc);
+  cf.classList.toggle('disc-input', hayDisc);
+  ct.classList.toggle('disc-input', hayDisc);
+  actualizarDiscrepancias();
+}
+
+/** Actualiza el contador de discrepancias en el header de la sección */
+function actualizarDiscrepancias() {
+  const total = document.querySelectorAll('#hallazgos-body tr.discrepancia').length;
+  const badge = document.getElementById('disc-count-badge');
+  if (total > 0) {
+    badge.innerHTML = `<span class="disc-badge">⚠ ${total} discrepancia${total > 1 ? 's' : ''}</span>`;
+  } else {
+    badge.innerHTML = '';
+  }
+}
+
+// ── Estado mercancía (chips) ───────────────────────────────────
+
+function toggleChip(id, colorClass) {
+  const el = document.getElementById(id);
+  const isActive = el.classList.contains(colorClass);
+  if (isActive) el.classList.remove(colorClass);
+  else el.classList.add(colorClass);
+}
+
+function chip(id, colorClass) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add(colorClass);
+}
+
+// ── Lightbox ───────────────────────────────────────────────────
+
+/** Abre el lightbox para ver la foto en grande */
+function verFoto(idx, src, tipo) {
+  document.getElementById('lb-img').src  = src;
+  document.getElementById('lb-tipo').textContent = tipo;
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function cerrarLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+
+// ── Guardar en local ───────────────────────────────────────────
+
+/** Guarda el reporte actualizado como archivo .integra en el equipo */
+function guardarLocal() {
+  const r = _leerFormulario();
+  const exportData = {
+    version: '1.0',
+    exportado: new Date().toISOString(),
+    exportadoPor: 'HIRAM JAFET VELAZQUEZ SANTANDER',
+    empresa: 'Integra Del Centro S.C.',
+    app: 'web-app v1.0',
+    reporte: r,
+    fotos: _fotos,
+  };
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  const ref  = r.referencia.replace(/[^a-zA-Z0-9_\-]/g, '_');
+  a.download = `Reporte_${ref}_${_hoy()}.integra`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('✓ Archivo guardado en tu equipo', 'green');
+}
+
+/** Nuevo reporte — limpia la pantalla */
+function nuevoReporte() {
+  _reporte = null;
+  _fotos   = [];
+  _filaId  = 0;
+  document.getElementById('hallazgos-body').innerHTML = '';
+  document.getElementById('foto-grid').innerHTML = '';
+  document.getElementById('reporte-panel').style.display = 'none';
+  document.getElementById('drop-zone').style.display = '';
+  document.getElementById('file-input').value = '';
+}
+
+// ── Generación de PDF ──────────────────────────────────────────
+
+/**
+ * Genera el PDF oficial con el formato de Integra Del Centro.
+ * Usa jsPDF + AutoTable para reproducir el formato exacto del papel.
+ */
+async function generarPDF() {
+  const r = _leerFormulario();
+  if (!r.referencia) {
+    toast('Ingresa la referencia antes de generar el PDF', 'red');
+    return;
+  }
+
+  toast('Generando PDF...', '');
+  await new Promise(res => setTimeout(res, 100));
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+    const PW = 215.9; // Letter width mm
+    const AZUL = [0, 48, 135];
+    const ROJO  = [183, 28, 28];
+
+    let y = 15;
+
+    // ── Encabezado ─────────────────────────────────────────
+    doc.setFontSize(15);
+    doc.setTextColor(...AZUL);
+    doc.setFont('helvetica', 'bold');
+    doc.text('INTEGRA DEL CENTRO, S.C.', 15, y);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text('Despachos Aduanales', 15, y + 5);
+    doc.text(`FECHA: ${_fmtFechaMX(r.fechaEntrada || new Date().toISOString())}`, PW - 15, y, { align: 'right' });
+
+    y += 10;
+    doc.setDrawColor(...AZUL);
+    doc.setLineWidth(0.8);
+    doc.line(15, y, PW - 15, y);
+
+    y += 7;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...AZUL);
+    doc.text('REPORTE PREVIO CON AVERÍA O DISCREPANCIA', PW / 2, y, { align: 'center' });
+
+    // ── Datos generales ─────────────────────────────────────
+    y += 8;
+    doc.autoTable({
+      startY: y,
+      head: [],
+      body: [
+        ['Importador', r.importador || '—', 'Referencia', r.referencia || '—'],
+        ['Proveedor',  r.proveedor  || '—', 'Guía BL / AWB', r.guiaBLMaster || '—'],
+        ['Recinto Fiscal', r.recintoFiscal || '—', 'Fecha de Entrada', _fmtFechaMX(r.fechaEntrada)],
+        ['Realiza Previo', r.realizaPrevio || '—', 'Bultos / Peso', `${r.bultos || '—'} / ${r.pesoBruto || '—'} kg`],
+      ],
+      columnStyles: {
+        0: { fontStyle: 'bold', textColor: AZUL, cellWidth: 38, fontSize: 9 },
+        1: { cellWidth: 60, fontSize: 9 },
+        2: { fontStyle: 'bold', textColor: AZUL, cellWidth: 38, fontSize: 9 },
+        3: { cellWidth: 60, fontSize: 9 },
+      },
+      theme: 'grid',
+      styles: { cellPadding: 3, lineColor: [220, 220, 220], lineWidth: 0.3 },
+      margin: { left: 15, right: 15 },
+    });
+
+    y = doc.lastAutoTable.finalY + 5;
+
+    // ── Detalle del previo ────────────────────────────────────
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...AZUL);
+    doc.text('Detalle del Previo', 15, y);
+    y += 3;
+
+    const estMerc = _leerEstadoChips();
+    doc.autoTable({
+      startY: y,
+      head: [['Solicitud', 'Inicio', 'Término', '¿Completa?', '¿Faltantes?', '¿Sobrantes?', 'Tipo Carga']],
+      body: [[
+        _fmtFechaMX(r.fechaSolicitud),
+        _fmtFechaHoraMX(r.fechaHoraInicio),
+        _fmtFechaHoraMX(r.fechaHoraTermino),
+        estMerc.completa  ? '✓ SÍ' : 'NO',
+        estMerc.faltantes ? '⚠ SÍ' : 'NO',
+        estMerc.sobrantes ? '⚠ SÍ' : 'NO',
+        estMerc.cargaCompleta ? 'Completa' : 'Parcial',
+      ]],
+      headStyles: { fillColor: AZUL, fontSize: 8, cellPadding: 3 },
+      bodyStyles: { fontSize: 8, cellPadding: 3 },
+      theme: 'grid',
+      styles: { lineColor: [220, 220, 220], lineWidth: 0.3 },
+      margin: { left: 15, right: 15 },
+    });
+
+    y = doc.lastAutoTable.finalY + 5;
+
+    // Observaciones
+    if (r.observacionesIncidencias) {
+      doc.setFontSize(8);
+      doc.setTextColor(60, 60, 60);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Observaciones: ', 15, y);
+      doc.setFont('helvetica', 'normal');
+      const lines = doc.splitTextToSize(r.observacionesIncidencias, PW - 60);
+      doc.text(lines, 46, y);
+      y += (lines.length * 4) + 3;
+    }
+
+    // ── Tabla de hallazgos ────────────────────────────────────
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...AZUL);
+    doc.text('Observaciones y Hallazgos', 15, y);
+    y += 3;
+
+    const hallazgos = _leerHallazgos();
+    const hallazgosRows = hallazgos.map(h => {
+      const disc = h.cantidadFactura && h.conteo && h.cantidadFactura !== h.conteo;
+      return [h.noFactura, h.noPartida, h.noParte, h.cantidadFactura, h.conteo, h.marca, h.modelo];
+    });
+
+    // Fila de total
+    hallazgosRows.push([{ content: 'Total de Mercancías:', colSpan: 1, styles: { fontStyle: 'bold' } },
+                        { content: r.totalMercancias || '', colSpan: 1, styles: { fontStyle: 'bold' } },
+                        '', '', '', '', '']);
+
+    doc.autoTable({
+      startY: y,
+      head: [['No Factura', 'No Partida', 'No Parte', 'Cant. Fact.', 'Conteo', 'Marca', 'Modelo']],
+      body: hallazgosRows,
+      headStyles: { fillColor: AZUL, fontSize: 8, cellPadding: 3 },
+      bodyStyles: { fontSize: 8, cellPadding: 3 },
+      theme: 'grid',
+      styles: { lineColor: [220, 220, 220], lineWidth: 0.3 },
+      margin: { left: 15, right: 15 },
+      // Colorear discrepancias en rojo
+      didParseCell: function(data) {
+        if (data.section === 'body') {
+          const row = hallazgos[data.row.index];
+          if (row) {
+            const disc = row.cantidadFactura && row.conteo &&
+                         row.cantidadFactura !== row.conteo;
+            if (disc && (data.column.index === 3 || data.column.index === 4)) {
+              data.cell.styles.textColor = ROJO;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            if (disc) data.cell.styles.fillColor = [255, 235, 238];
+          }
+        }
+      },
+    });
+
+    y = doc.lastAutoTable.finalY;
+
+    // ── Pie de página pág 1 ───────────────────────────────────
+    const piePag = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= piePag; p++) {
+      doc.setPage(p);
+      doc.setFontSize(7);
+      doc.setTextColor(150, 150, 150);
+      doc.setFont('helvetica', 'normal');
+      doc.text(
+        'Integra Del Centro S.C.  |  Sistema de Reportes Aduanales  |  Dev: HIRAM JAFET VELAZQUEZ SANTANDER',
+        PW / 2, 272, { align: 'center' }
+      );
+    }
+
+    // ── Páginas de fotos ──────────────────────────────────────
+    // Ordenar: Documentos → Averías → Mercancía
+    const orden = { 'Averia': 1, 'Mercancia': 3 };
+    const fotosOrdenadas = [..._fotos].sort((a, b) =>
+      (orden[a.tipo] || 2) - (orden[b.tipo] || 2));
+
+    for (const foto of fotosOrdenadas) {
+      doc.addPage();
+      const colorBanner = foto.tipo === 'Averia' ? ROJO
+                        : foto.tipo === 'Mercancia' ? AZUL
+                        : [230, 81, 0];
+      // Banner superior
+      doc.setFillColor(...colorBanner);
+      doc.rect(0, 0, PW, 14, 'F');
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text(foto.tipo.toUpperCase(), 15, 9);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(r.referencia, PW - 15, 9, { align: 'right' });
+
+      // Imagen
+      try {
+        const imgData = `data:${foto.mimeType || 'image/jpeg'};base64,${foto.base64}`;
+        doc.addImage(imgData, 'JPEG', 10, 18, PW - 20, 230);
+      } catch(e) {
+        doc.setFontSize(10);
+        doc.setTextColor(150, 150, 150);
+        doc.text('[Imagen no disponible]', PW / 2, 130, { align: 'center' });
+      }
+
+      // Pie
+      doc.setFontSize(7);
+      doc.setTextColor(150, 150, 150);
+      doc.text('Integra Del Centro S.C.  |  HIRAM JAFET VELAZQUEZ SANTANDER', PW / 2, 272, { align: 'center' });
+    }
+
+    // ── Guardar PDF ───────────────────────────────────────────
+    const ref = (r.referencia || 'Reporte').replace(/[^a-zA-Z0-9_\-]/g, '_');
+    doc.save(`ReporteDiscrepancia_${ref}_${_hoy()}.pdf`);
+    toast('✓ PDF generado correctamente', 'green');
+
+  } catch(err) {
+    console.error(err);
+    toast('Error al generar PDF: ' + err.message, 'red');
+  }
+}
+
+// ── Helpers de lectura del formulario ─────────────────────────
+
+/** Lee todos los campos del formulario y devuelve el objeto reporte */
+function _leerFormulario() {
+  return {
+    ..._reporte,
+    importador:               get('f-importador'),
+    proveedor:                get('f-proveedor'),
+    recintoFiscal:            get('f-recinto'),
+    realizaPrevio:            get('f-realiza'),
+    referencia:               get('f-referencia'),
+    guiaBLMaster:             get('f-guia'),
+    bultos:                   get('f-bultos'),
+    pesoBruto:                get('f-peso'),
+    observacionesIncidencias: get('f-observaciones'),
+    totalMercancias:          get('f-total'),
+    fechaEntrada:    get('f-fechaEntrada') || null,
+    fechaSolicitud:  get('f-fechaSolicitud') || null,
+    fechaHoraInicio: get('f-inicio') || null,
+    fechaHoraTermino:get('f-termino') || null,
+    hallazgos:       _leerHallazgos(),
+    estadoMercancia: _leerEstadoChips(),
+  };
+}
+
+/** Lee todas las filas de la tabla de hallazgos */
+function _leerHallazgos() {
+  const filas = document.querySelectorAll('#hallazgos-body tr');
+  return Array.from(filas).map(tr => {
+    const inputs = tr.querySelectorAll('input[type=text]');
+    return {
+      noFactura:       inputs[0]?.value || '',
+      noPartida:       inputs[1]?.value || '',
+      noParte:         inputs[2]?.value || '',
+      cantidadFactura: inputs[3]?.value || '',
+      conteo:          inputs[4]?.value || '',
+      marca:           inputs[5]?.value || '',
+      modelo:          inputs[6]?.value || '',
+      observaciones:   inputs[7]?.value || '',
+    };
+  });
+}
+
+/** Lee el estado de los chips de estado de mercancía */
+function _leerEstadoChips() {
+  const has = (id, cls) => document.getElementById(id)?.classList.contains(cls) || false;
+  return {
+    completa:      has('chip-completa',       'checked-verde'),
+    faltantes:     has('chip-faltantes',      'checked-naranja'),
+    sobrantes:     has('chip-sobrantes',      'checked-rojo'),
+    cargaCompleta: has('chip-carga-completa', 'checked-azul'),
+  };
+}
+
+// ── Helpers de formato ─────────────────────────────────────────
+
+function _fmtFechaMX(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
+function _fmtFechaHoraMX(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return `${_fmtFechaMX(iso)} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function _hoy() {
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// ── Helpers DOM ───────────────────────────────────────────────
+function get(id) { return document.getElementById(id)?.value || ''; }
+function set(id, val) { const el = document.getElementById(id); if(el) el.value = val; }
+function esc(v) { return (v || '').replace(/"/g, '&quot;'); }
+function escapeAttr(s) { return (s || '').substring(0, 30); }
+
+/** Muestra el toast de notificación */
+function toast(msg, tipo) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${tipo}`;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
