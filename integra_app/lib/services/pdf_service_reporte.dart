@@ -123,7 +123,7 @@ class PdfServiceReporte {
                               color: PdfColors.white,
                               fontSize: 8)),
                       pw.Text(
-                          'Dev: HIRAM JAFET VELAZQUEZ SANTANDER',
+                          'Integra Del Centro S.C.',
                           style: const pw.TextStyle(
                               color: const PdfColor(1, 1, 1, 0.7),
                               fontSize: 7)),
@@ -148,7 +148,7 @@ class PdfServiceReporte {
         [XFile(file.path)],
         text: 'Reporte Previo/Discrepancia — ${reporte.referencia}\n'
             'Integra Del Centro S.C.\n'
-            'Dev: HIRAM JAFET VELAZQUEZ SANTANDER',
+            'Integra Del Centro S.C.',
       );
 
       if (context.mounted) {
@@ -420,7 +420,7 @@ class PdfServiceReporte {
                     fontSize: 7, color: PdfColors.grey600),
               ),
               pw.Text(
-                'Dev: HIRAM JAFET VELAZQUEZ SANTANDER',
+                'Integra Del Centro S.C.',
                 style: const pw.TextStyle(
                     fontSize: 6, color: PdfColors.grey500),
               ),

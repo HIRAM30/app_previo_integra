@@ -1,13 +1,11 @@
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// screens/previo_detalle_screen.dart
-// Descripción: Pantalla de detalle de un previo guardado.
-//   Muestra toda la información capturada en campo y la galería
-//   de fotos. Incluye el botón clave "Generar Reporte de
-//   Discrepancia" que pre-llena automáticamente todos los datos
-//   del previo en el formulario de reporte — el agente solo
-//   necesita agregar la tabla de hallazgos.
+// screens/previo_detalle_screen.dart v3.1
+// Mejora: Al presionar "Generar Reporte de Discrepancia",
+//   las fotos de avería del previo se jalán automáticamente
+//   al formulario del reporte. El agente solo agrega la
+//   tabla de hallazgos.
 // ============================================================
 
 import 'dart:io';
@@ -16,6 +14,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/reporte.dart';
 import '../services/pdf_service_previo.dart';
+import 'nuevo_previo_screen.dart';
 import 'nuevo_reporte_screen.dart';
 
 class PrevioDetalleScreen extends StatelessWidget {
@@ -29,42 +28,53 @@ class PrevioDetalleScreen extends StatelessWidget {
   });
 
   Color _colorTipo(String tipo) {
-    if (tipo == 'Averia') return Colors.red.shade700;
+    if (tipo == 'Averia')    return Colors.red.shade700;
     if (tipo == 'Mercancia') return const Color(0xFF003087);
     return Colors.orange.shade700;
   }
 
   @override
   Widget build(BuildContext context) {
-    final fotos = List<String>.from(previo['fotos'] ?? []);
-    final fotosTipos = List<String>.from(
-        previo['fotosTipos'] ?? List.filled(fotos.length, 'Foto'));
+    final fotos  = List<String>.from(previo['fotos']      ?? []);
+    final tipos  = List<String>.from(previo['fotosTipos'] ?? []);
+    final averias = <Map<String, String>>[];
 
-    final tieneAverias = fotosTipos.contains('Averia');
-
-    // Ordenar: documentos → averías → mercancía
+    // Ordenar fotos para mostrar
     final indexados = List.generate(fotos.length,
-        (i) => {'path': fotos[i], 'tipo': fotosTipos[i]});
-    final documentos = indexados
-        .where((f) => f['tipo'] != 'Mercancia' && f['tipo'] != 'Averia')
-        .toList();
-    final averias =
-        indexados.where((f) => f['tipo'] == 'Averia').toList();
-    final mercancias =
-        indexados.where((f) => f['tipo'] == 'Mercancia').toList();
-    final ordenadas = [...documentos, ...averias, ...mercancias];
+        (i) => {'path': fotos[i], 'tipo': i < tipos.length ? tipos[i] : 'Foto'});
+    final docs  = indexados.where((f) =>
+        f['tipo'] != 'Mercancia' && f['tipo'] != 'Averia').toList();
+    final avs   = indexados.where((f) => f['tipo'] == 'Averia').toList();
+    final mercs = indexados.where((f) => f['tipo'] == 'Mercancia').toList();
+    final ordenadas = [...docs, ...avs, ...mercs];
+
+    final numAverias = avs.length;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(previo['referencia'] ?? 'Detalle del Previo'),
         actions: [
-          // PDF rápido del previo
+          // Editar previo
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: Colors.white),
+            tooltip: 'Editar previo',
+            onPressed: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NuevoPrevioScreen(
+                  previoEditar: previo,
+                  boxKeyEditar: boxKey,
+                ),
+              ),
+            ),
+          ),
+          // PDF del previo
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
             tooltip: 'PDF del Previo',
             onPressed: () => _generarPdf(context),
           ),
-          // Eliminar previo
+          // Eliminar
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Eliminar',
@@ -75,29 +85,57 @@ class PrevioDetalleScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ── Botón principal: Generar Reporte de Discrepancia ──
-          if (tieneAverias) ...[
+
+          // ── Botón principal: Generar Reporte ───────────────
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.fact_check,
+                  color: Colors.white, size: 22),
+              label: const Text(
+                'Generar Reporte de Discrepancia',
+                style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => _generarReporte(context),
+            ),
+          ),
+
+          // Banner informativo según si hay averías
+          if (numAverias > 0)
             Container(
+              padding: const EdgeInsets.all(10),
               margin: const EdgeInsets.only(bottom: 16),
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.fact_check, color: Colors.white, size: 22),
-                label: const Text(
-                  'Generar Reporte de Discrepancia',
-                  style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade700,
-                  minimumSize: const Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.shade300),
+              ),
+              child: Row(children: [
+                Icon(Icons.check_circle_outline,
+                    size: 18, color: Colors.green.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$numAverias foto${numAverias != 1 ? 's' : ''} de '
+                    'avería se agregarán automáticamente al reporte. '
+                    'Solo completa la tabla de hallazgos.',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green.shade900),
                   ),
                 ),
-                onPressed: () => _generarReporteDesde(context),
-              ),
-            ),
+              ]),
+            )
+          else
             Container(
               padding: const EdgeInsets.all(10),
               margin: const EdgeInsets.only(bottom: 16),
@@ -106,72 +144,52 @@ class PrevioDetalleScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.orange.shade300),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline,
-                      size: 18, color: Colors.orange.shade800),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Este previo tiene ${averias.length} foto(s) de avería. '
-                      'El reporte se pre-llena con los datos del previo. '
-                      'Solo agrega la tabla de hallazgos.',
-                      style: TextStyle(
-                          fontSize: 12, color: Colors.orange.shade900),
-                    ),
+              child: Row(children: [
+                Icon(Icons.info_outline,
+                    size: 18, color: Colors.orange.shade800),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Este previo no tiene fotos de avería. '
+                    'Puedes agregar fotos manualmente en el reporte.',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade900),
                   ),
-                ],
-              ),
-            ),
-          ] else ...[
-            // Si no hay averías igual se puede generar reporte
-            OutlinedButton.icon(
-              icon: Icon(Icons.fact_check,
-                  color: Colors.red.shade700, size: 20),
-              label: Text(
-                'Generar Reporte de Discrepancia',
-                style: TextStyle(
-                    fontSize: 14, color: Colors.red.shade700),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: Colors.red.shade300),
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
                 ),
-              ),
-              onPressed: () => _generarReporteDesde(context),
+              ]),
             ),
-            const SizedBox(height: 12),
-          ],
 
-          // ── Datos del previo ──
+          // ── Datos del previo ────────────────────────────────
           _seccion('Datos del Embarque', Icons.local_shipping),
-          _infoRow(Icons.tag, 'Referencia', previo['referencia']),
-          _infoRow(Icons.business, 'Cliente', previo['cliente']),
-          _infoRow(Icons.warehouse, 'Almacén', previo['almacen']),
-          _infoRow(Icons.numbers, 'Terminación House', previo['house']),
-          _infoRow(Icons.calendar_today, 'Fecha',
+          _fila(Icons.tag, 'Referencia / Master', previo['referencia']),
+          _fila(Icons.business, 'Cliente', previo['cliente']),
+          _fila(Icons.warehouse, 'Almacén', previo['almacen']),
+          _fila(Icons.numbers, 'House', previo['house']),
+          _fila(Icons.calendar_today, 'Fecha',
               previo['fecha']?.substring(0, 10)),
           if ((previo['observaciones'] ?? '').isNotEmpty)
-            _infoRow(Icons.notes, 'Observaciones', previo['observaciones']),
+            _fila(Icons.notes, 'Observaciones',
+                previo['observaciones']),
 
           const SizedBox(height: 16),
 
-          // ── Fotografías ──
-          _seccion('Fotografías (${fotos.length})', Icons.photo_camera),
+          // ── Fotografías ─────────────────────────────────────
+          _seccion('Fotografías (${fotos.length})',
+              Icons.photo_camera),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            gridDelegate:
+                const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 8,
               mainAxisSpacing: 8,
               childAspectRatio: 0.82,
             ),
             itemCount: ordenadas.length,
-            itemBuilder: (context, index) {
-              final f = ordenadas[index];
+            itemBuilder: (context, i) {
+              final f    = ordenadas[i];
               final path = f['path']!;
               final tipo = f['tipo']!;
               final color = _colorTipo(tipo);
@@ -183,41 +201,38 @@ class PrevioDetalleScreen extends StatelessWidget {
               }
 
               return GestureDetector(
-                onTap: () => _verFotoCompleta(context, path, tipo),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(8)),
-                        child: Image.file(
-                          File(path),
+                onTap: () => _verFoto(context, path, tipo),
+                child: Column(children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(8)),
+                      child: Image.file(File(path),
                           fit: BoxFit.cover,
                           width: double.infinity,
                           cacheHeight: 300,
-                          cacheWidth: 300,
-                        ),
-                      ),
+                          cacheWidth: 300),
                     ),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.15),
-                        border:
-                            Border(top: BorderSide(color: color, width: 2)),
-                        borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(8)),
-                      ),
-                      child: Text(tipo,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: color)),
+                  ),
+                  Container(
+                    width: double.infinity,
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.15),
+                      border: Border(
+                          top: BorderSide(color: color, width: 2)),
+                      borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(8)),
                     ),
-                  ],
-                ),
+                    child: Text(tipo,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: color)),
+                  ),
+                ]),
               );
             },
           ),
@@ -227,48 +242,50 @@ class PrevioDetalleScreen extends StatelessWidget {
     );
   }
 
-  // ── Pre-llenar el reporte con datos del previo ──────────────
-  /// Construye un ReportePrevio con todos los datos del previo
-  /// pre-cargados y navega al formulario de nuevo reporte.
-  /// El agente solo necesita agregar la tabla de hallazgos.
-  void _generarReporteDesde(BuildContext context) {
-    // Extraer fotos de avería para pre-cargarlas en el reporte
-    final fotos = List<String>.from(previo['fotos'] ?? []);
+  // ── Genera el reporte jalando averías automáticamente ────────
+  /// Pre-llena el reporte con:
+  ///   - Todos los datos del previo (referencia, cliente, almacén, house)
+  ///   - Las fotos de AVERÍA del previo (jaladas automáticamente)
+  /// El agente solo tiene que agregar la tabla de hallazgos.
+  void _generarReporte(BuildContext context) {
+    final fotos = List<String>.from(previo['fotos']      ?? []);
     final tipos = List<String>.from(previo['fotosTipos'] ?? []);
 
-    final fotosAveria = <String>[];
-    final tiposAveria = <String>[];
+    // Extraer solo las fotos de avería
+    final fotosAveria  = <String>[];
+    final tiposAveria  = <String>[];
     for (int i = 0; i < fotos.length; i++) {
-      if (i < tipos.length && tipos[i] == 'Averia') {
+      final tipo = i < tipos.length ? tipos[i] : '';
+      if (tipo == 'Averia') {
         fotosAveria.add(fotos[i]);
         tiposAveria.add('Averia');
       }
     }
 
-    // Pre-llenar el reporte con los datos del previo
+    // Construir el reporte pre-llenado
     final reporteInicial = ReportePrevio(
-      id: ReportePrevio.generarId(),
-      // Del previo
-      importador: previo['cliente'] ?? '',
-      recintoFiscal: previo['almacen'] ?? '',
-      referencia: previo['referencia'] ?? '',
-      guiaBLMaster: previo['house'] ?? '',
-      realizaPrevio: '',
-      proveedor: '',
-      // Fotos de avería pre-cargadas
-      fotos: fotosAveria,
-      fotosTipos: tiposAveria,
+      id:             ReportePrevio.generarId(),
+      importador:     previo['cliente']      ?? '',
+      recintoFiscal:  previo['almacen']      ?? '',
+      referencia:     previo['referencia']   ?? '',
+      guiaBLMaster:   previo['house']        ?? '',
+      realizaPrevio:  '',
+      proveedor:      '',
+      observacionesIncidencias: previo['observaciones'] ?? '',
+      // ← Fotos de avería jaladas automáticamente
+      fotos:          fotosAveria,
+      fotosTipos:     tiposAveria,
     );
 
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => NuevoReporteScreen(reporteInicial: reporteInicial),
+        builder: (_) => NuevoReporteScreen(
+            reporteInicial: reporteInicial),
       ),
     );
   }
 
-  // ── PDF del previo ──────────────────────────────────────────
   Future<void> _generarPdf(BuildContext context) async {
     showDialog(
       context: context,
@@ -293,14 +310,14 @@ class PrevioDetalleScreen extends StatelessWidget {
     }
   }
 
-  // ── Eliminar previo ─────────────────────────────────────────
   Future<void> _confirmarEliminar(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('¿Eliminar Previo?'),
         content: Text(
-            'Se eliminará el previo "${previo['referencia']}". '
+            'Se eliminará el previo '
+            '"${previo['referencia']}". '
             'Esta acción no se puede deshacer.'),
         actions: [
           TextButton(
@@ -320,8 +337,7 @@ class PrevioDetalleScreen extends StatelessWidget {
     }
   }
 
-  // ── Ver foto a pantalla completa ────────────────────────────
-  void _verFotoCompleta(BuildContext context, String path, String tipo) {
+  void _verFoto(BuildContext context, String path, String tipo) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -340,52 +356,46 @@ class PrevioDetalleScreen extends StatelessWidget {
     );
   }
 
-  // ── Helpers de UI ───────────────────────────────────────────
   Widget _seccion(String titulo, IconData icon) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFF003087), size: 20),
-          const SizedBox(width: 8),
-          Text(titulo,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF003087))),
-          const SizedBox(width: 8),
-          Expanded(child: Divider(color: Colors.grey.shade300)),
-        ],
-      ),
+      child: Row(children: [
+        Icon(icon, color: const Color(0xFF003087), size: 20),
+        const SizedBox(width: 8),
+        Text(titulo,
+            style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF003087))),
+        const SizedBox(width: 8),
+        Expanded(child: Divider(color: Colors.grey.shade300)),
+      ]),
     );
   }
 
-  Widget _infoRow(IconData icon, String label, String? value) {
-    if (value == null || value.isEmpty) return const SizedBox.shrink();
+  Widget _fila(IconData icon, String label, String? val) {
+    if (val == null || val.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: const Color(0xFF003087)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: const TextStyle(
-                    fontSize: 14, color: Colors.black87),
-                children: [
-                  TextSpan(
-                      text: '$label: ',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold)),
-                  TextSpan(text: value),
-                ],
-              ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, size: 18, color: const Color(0xFF003087)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                  fontSize: 14, color: Colors.black87),
+              children: [
+                TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold)),
+                TextSpan(text: val),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 }
