@@ -1,11 +1,12 @@
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// screens/previo_detalle_screen.dart v3.1
+// screens/previo_detalle_screen.dart v3.2
 // Mejora: Al presionar "Generar Reporte de Discrepancia",
-//   las fotos de avería del previo se jalán automáticamente
+//   las fotos de avería del previo se jalan automáticamente
 //   al formulario del reporte. El agente solo agrega la
 //   tabla de hallazgos.
+//   Nuevo: Botón para gestionar bloques
 // ============================================================
 
 import 'dart:io';
@@ -16,6 +17,7 @@ import '../models/reporte.dart';
 import '../services/pdf_service_previo.dart';
 import 'nuevo_previo_screen.dart';
 import 'nuevo_reporte_screen.dart';
+import 'gestion_bloques_screen.dart';
 
 class PrevioDetalleScreen extends StatelessWidget {
   final Map previo;
@@ -54,6 +56,20 @@ class PrevioDetalleScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(previo['referencia'] ?? 'Detalle del Previo'),
         actions: [
+          // Gestionar Bloques
+          IconButton(
+            icon: const Icon(Icons.widgets_outlined, color: Colors.white),
+            tooltip: 'Gestionar Bloques',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => GestionBloquesScreen(
+                  previo: previo,
+                  boxKey: boxKey,
+                ),
+              ),
+            ),
+          ),
           // Editar previo
           IconButton(
             icon: const Icon(Icons.edit_outlined, color: Colors.white),
@@ -172,6 +188,27 @@ class PrevioDetalleScreen extends StatelessWidget {
             _fila(Icons.notes, 'Observaciones',
                 previo['observaciones']),
 
+          // ── Datos complementarios ───────────────────────────
+          if ((previo['aduana'] ?? '').isNotEmpty ||
+              (previo['patente'] ?? '').isNotEmpty ||
+              (previo['contenedor'] ?? '').isNotEmpty ||
+              (previo['verificador'] ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _seccion('Datos Complementarios', Icons.assignment),
+            if ((previo['aduana'] ?? '').isNotEmpty)
+              _fila(Icons.location_on, 'Aduana', previo['aduana']),
+            if ((previo['patente'] ?? '').isNotEmpty)
+              _fila(Icons.numbers, 'Patente', previo['patente']),
+            if ((previo['tipoOperacion'] ?? '').isNotEmpty)
+              _fila(Icons.swap_horiz, 'Tipo de Operación', previo['tipoOperacion']),
+            if ((previo['contenedor'] ?? '').isNotEmpty)
+              _fila(Icons.inventory_2, 'Contenedor', previo['contenedor']),
+            if ((previo['sello'] ?? '').isNotEmpty)
+              _fila(Icons.lock, 'Sello', previo['sello']),
+            if ((previo['verificador'] ?? '').isNotEmpty)
+              _fila(Icons.person, 'Verificador', previo['verificador']),
+          ],
+
           const SizedBox(height: 16),
 
           // ── Fotografías ─────────────────────────────────────
@@ -242,16 +279,10 @@ class PrevioDetalleScreen extends StatelessWidget {
     );
   }
 
-  // ── Genera el reporte jalando averías automáticamente ────────
-  /// Pre-llena el reporte con:
-  ///   - Todos los datos del previo (referencia, cliente, almacén, house)
-  ///   - Las fotos de AVERÍA del previo (jaladas automáticamente)
-  /// El agente solo tiene que agregar la tabla de hallazgos.
   void _generarReporte(BuildContext context) {
     final fotos = List<String>.from(previo['fotos']      ?? []);
     final tipos = List<String>.from(previo['fotosTipos'] ?? []);
 
-    // Extraer solo las fotos de avería
     final fotosAveria  = <String>[];
     final tiposAveria  = <String>[];
     for (int i = 0; i < fotos.length; i++) {
@@ -262,7 +293,6 @@ class PrevioDetalleScreen extends StatelessWidget {
       }
     }
 
-    // Construir el reporte pre-llenado
     final reporteInicial = ReportePrevio(
       id:             ReportePrevio.generarId(),
       importador:     previo['cliente']      ?? '',
@@ -272,7 +302,6 @@ class PrevioDetalleScreen extends StatelessWidget {
       realizaPrevio:  '',
       proveedor:      '',
       observacionesIncidencias: previo['observaciones'] ?? '',
-      // ← Fotos de avería jaladas automáticamente
       fotos:          fotosAveria,
       fotosTipos:     tiposAveria,
     );

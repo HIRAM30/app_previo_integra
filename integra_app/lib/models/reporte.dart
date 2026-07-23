@@ -135,6 +135,15 @@ class ReportePrevio {
 
   final DateTime fechaCreacion;
 
+  // ─── NUEVOS CAMPOS PARA BLOQUES Y ELEMENTOS ───
+  String aduana;
+  String patente;
+  String tipoOperacion;
+  String contenedor;
+  String sello;
+  String verificador;
+  List<Map<String, dynamic>> bloques; // Lista de bloques con sus elementos
+
   ReportePrevio({
     required this.id,
     this.importador = '',
@@ -162,11 +171,20 @@ class ReportePrevio {
     List<String>? fotos,
     List<String>? fotosTipos,
     DateTime? fechaCreacion,
+    // Nuevos campos
+    this.aduana = '',
+    this.patente = '',
+    this.tipoOperacion = 'Importación',
+    this.contenedor = '',
+    this.sello = '',
+    this.verificador = '',
+    List<Map<String, dynamic>>? bloques,
   })  : estadoMercancia = estadoMercancia ?? EstadoMercancia(),
         hallazgos = hallazgos ?? [],
         fotos = fotos ?? [],
         fotosTipos = fotosTipos ?? [],
-        fechaCreacion = fechaCreacion ?? DateTime.now();
+        fechaCreacion = fechaCreacion ?? DateTime.now(),
+        bloques = bloques ?? [];
 
   /// Número de hallazgos con discrepancia entre factura y conteo.
   int get totalDiscrepancias =>
@@ -200,12 +218,21 @@ class ReportePrevio {
         'fotos': fotos,
         'fotosTipos': fotosTipos,
         'fechaCreacion': fechaCreacion.toIso8601String(),
+        // Nuevos campos
+        'aduana': aduana,
+        'patente': patente,
+        'tipoOperacion': tipoOperacion,
+        'contenedor': contenedor,
+        'sello': sello,
+        'verificador': verificador,
+        'bloques': bloques,
       };
 
   /// Reconstruye desde Hive o desde el JSON del archivo .integra.
   factory ReportePrevio.fromMap(Map data) {
     final hRaw = data['hallazgos'] as List? ?? [];
     final emRaw = data['estadoMercancia'] as Map?;
+    final bloquesRaw = data['bloques'] as List? ?? [];
 
     return ReportePrevio(
       id: data['id'] ?? ReportePrevio.generarId(),
@@ -236,6 +263,14 @@ class ReportePrevio {
       fotos: List<String>.from(data['fotos'] ?? []),
       fotosTipos: List<String>.from(data['fotosTipos'] ?? []),
       fechaCreacion: _parseDate(data['fechaCreacion']) ?? DateTime.now(),
+      // Nuevos campos
+      aduana: data['aduana'] ?? '',
+      patente: data['patente'] ?? '',
+      tipoOperacion: data['tipoOperacion'] ?? 'Importación',
+      contenedor: data['contenedor'] ?? '',
+      sello: data['sello'] ?? '',
+      verificador: data['verificador'] ?? '',
+      bloques: bloquesRaw.map((b) => Map<String, dynamic>.from(b as Map)).toList(),
     );
   }
 

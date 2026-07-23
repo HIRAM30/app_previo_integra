@@ -1,14 +1,13 @@
-
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// screens/nuevo_previo_screen.dart v3.3
+// screens/nuevo_previo_screen.dart v3.5
 // Mejoras:
-//   - Reordenar fotos con drag & drop (mantener presionado
-//     y arrastrar para acomodar por caja, partida, etc.)
+//   - Reordenar fotos con drag & drop
 //   - Descripcion visible en el carrusel
 //   - Editar descripcion tocando la foto
 //   - Corrección de rotación EXIF automática
+//   - Bloques del previo con edición y fotos por bloque
 // ============================================================
 
 import 'dart:io';
@@ -35,8 +34,11 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
   final _houseCtrl         = TextEditingController();
   final _observacionesCtrl = TextEditingController();
 
-  // Cada foto: {'file': File, 'tipo': String, 'descripcion': String}
+  // Cada foto: {'file': File, 'tipo': String, 'descripcion': String, 'bloqueId': String}
   final List<Map<String, dynamic>> _fotos = [];
+  // Cada bloque: {'id': String, 'nombre': String, 'informacion': String}
+  final List<Map<String, String>> _bloques = [];
+  String? _bloqueActivoId;
   bool _isSaving = false;
 
   @override
@@ -54,6 +56,20 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
       final tipos = List<String>.from(p['fotosTipos']         ?? []);
       final descs = List<String>.from(p['fotosDescripciones'] ?? []);
 
+      // Cargar bloques existentes
+      for (final raw in List.from(p['bloques'] ?? [])) {
+        final bloque = Map.from(raw as Map);
+        _bloques.add({
+          'id': '${bloque['id'] ?? ''}',
+          'nombre': '${bloque['nombre'] ?? ''}',
+          'informacion': '${bloque['informacion'] ?? ''}',
+        });
+      }
+      if (_bloques.isEmpty) _crearBloqueInicial();
+      _bloqueActivoId = _bloques.first['id'];
+
+      // Cargar fotos con bloqueId
+      final fotosBloques = List<String>.from(p['fotosBloques'] ?? []);
       for (int i = 0; i < rutas.length; i++) {
         final file = File(rutas[i]);
         if (file.existsSync()) {
@@ -61,10 +77,22 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
             'file':        file,
             'tipo':        i < tipos.length ? tipos[i] : 'Mercancia',
             'descripcion': i < descs.length ? descs[i] : '',
+            'bloqueId':    i < fotosBloques.length ? fotosBloques[i] : _bloqueActivoId,
           });
         }
       }
+    } else {
+      _crearBloqueInicial();
+      _bloqueActivoId = _bloques.first['id'];
     }
+  }
+
+  void _crearBloqueInicial() {
+    _bloques.add({
+      'id': DateTime.now().microsecondsSinceEpoch.toString(),
+      'nombre': 'Bloque 1',
+      'informacion': '',
+    });
   }
 
   @override
@@ -83,6 +111,107 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
     return Colors.orange.shade700;
   }
 
+  Future<void> _nuevoBloque() async {
+    final nombre = TextEditingController(text: 'Bloque ${_bloques.length + 1}');
+    final informacion = TextEditingController();
+    final resultado = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nuevo bloque'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: nombre,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Nombre del bloque',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: informacion,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Información del bloque',
+              hintText: 'Ej. Caja 1 a 10, partida, contenido...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, {
+              'nombre': nombre.text.trim(),
+              'informacion': informacion.text.trim(),
+            }),
+            child: const Text('Crear'),
+          ),
+        ],
+      ),
+    );
+    if (resultado != null && (resultado['nombre'] ?? '').isNotEmpty) {
+      final id = DateTime.now().microsecondsSinceEpoch.toString();
+      setState(() {
+        _bloques.add({'id': id, ...resultado});
+        _bloqueActivoId = id;
+      });
+    }
+  }
+
+  Future<void> _editarBloque(Map<String, String> bloque) async {
+    final nombre = TextEditingController(text: bloque['nombre']);
+    final informacion = TextEditingController(text: bloque['informacion']);
+    final resultado = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Editar ${bloque['nombre']}'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: nombre,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Nombre del bloque',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: informacion,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Información del bloque',
+              hintText: 'Contenido, cajas, partida u observaciones...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, {
+              'nombre': nombre.text.trim(),
+              'informacion': informacion.text.trim(),
+            }),
+            child: const Text('Guardar cambios'),
+          ),
+        ],
+      ),
+    );
+    if (resultado != null && (resultado['nombre'] ?? '').isNotEmpty) {
+      setState(() {
+        bloque['nombre'] = resultado['nombre']!;
+        bloque['informacion'] = resultado['informacion']!;
+      });
+    }
+  }
+
   Future<void> _agregarFotos() async {
     await showModalBottomSheet(
       context: context,
@@ -91,14 +220,16 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
       builder: (_) => _FotoContinuaSheet(
         onFotoCapturada: (File file, String tipo, String desc) {
           setState(() => _fotos.add({
-            'file': file, 'tipo': tipo, 'descripcion': desc,
+            'file': file,
+            'tipo': tipo,
+            'descripcion': desc,
+            'bloqueId': _bloqueActivoId,
           }));
         },
       ),
     );
   }
 
-  /// Editar descripcion de una foto existente
   Future<void> _editarDescripcion(int index) async {
     final ctrl = TextEditingController(
         text: _fotos[index]['descripcion'] as String? ?? '');
@@ -161,6 +292,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
         'fotos':              _fotos.map((f) => (f['file'] as File).path).toList(),
         'fotosTipos':         _fotos.map((f) => f['tipo'] as String).toList(),
         'fotosDescripciones': _fotos.map((f) => (f['descripcion'] as String?) ?? '').toList(),
+        'fotosBloques':       _fotos.map((f) => (f['bloqueId'] as String?) ?? '').toList(),
+        'bloques':            _bloques,
       };
 
       await box.put(id, data);
@@ -232,6 +365,75 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
             const Divider(),
             const SizedBox(height: 12),
 
+            // ─── BLOQUES DEL PREVIO ───
+            const SeccionHeader(titulo: 'Bloques del previo', icono: Icons.inventory_2_outlined),
+            Row(children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _bloqueActivoId,
+                  decoration: const InputDecoration(
+                    labelText: 'Bloque para las siguientes fotos',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.view_module_outlined),
+                  ),
+                  items: _bloques.map((b) => DropdownMenuItem(
+                    value: b['id'],
+                    child: Text(b['nombre'] ?? 'Bloque'),
+                  )).toList(),
+                  onChanged: (id) => setState(() => _bloqueActivoId = id),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Agregar bloque',
+                onPressed: _nuevoBloque,
+                icon: const Icon(Icons.add_circle, color: Color(0xFF003087), size: 32),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            ..._bloques.map((bloque) {
+              final cantidad = _fotos.where((f) => f['bloqueId'] == bloque['id']).length;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: bloque['id'] == _bloqueActivoId ? const Color(0xFFEAF0FA) : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(
+                        '${bloque['nombre']} · $cantidad foto${cantidad == 1 ? '' : 's'}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF003087)),
+                      ),
+                      if ((bloque['informacion'] ?? '').isNotEmpty)
+                        Text(bloque['informacion']!, style: const TextStyle(fontSize: 12)),
+                    ]),
+                  ),
+                  IconButton(
+                    tooltip: 'Agregar fotos a este bloque',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      setState(() => _bloqueActivoId = bloque['id']);
+                      _agregarFotos();
+                    },
+                    icon: const Icon(Icons.add_a_photo_outlined, color: Color(0xFF003087)),
+                  ),
+                  IconButton(
+                    tooltip: 'Editar bloque',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _editarBloque(bloque),
+                    icon: const Icon(Icons.edit_outlined, color: Color(0xFF003087)),
+                  ),
+                ]),
+              );
+            }),
+            const SizedBox(height: 8),
+
+            const Divider(),
+            const SizedBox(height: 12),
+
             const SeccionHeader(titulo: 'Fotografías', icono: Icons.photo_camera),
 
             ElevatedButton(
@@ -262,7 +464,6 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
             if (_fotos.isNotEmpty) ...[
               const SizedBox(height: 8),
 
-              // Instrucciones de uso
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
@@ -291,10 +492,6 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
               ),
               const SizedBox(height: 10),
 
-              // ── GRID CON DRAG & DROP ─────────────────────────
-              // ReorderableGridView permite arrastrar fotos para
-              // cambiar su orden — ideal para acomodar por caja
-              // o partida antes de guardar.
               ReorderableListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -313,6 +510,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                   final tipo  = f['tipo']        as String;
                   final desc  = f['descripcion'] as String? ?? '';
                   final color = _colorTipo(tipo);
+                  final bloqueId = f['bloqueId'] as String? ?? '';
+                  final bloqueNombre = _bloques.where((b) => b['id'] == bloqueId).map((b) => b['nombre']).firstOrNull ?? 'Sin bloque';
 
                   return Padding(
                     key: ValueKey('foto_$index${f['file'].toString()}'),
@@ -324,7 +523,6 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                         side: BorderSide(color: color, width: 2),
                       ),
                       child: Row(children: [
-                        // Número de orden
                         Container(
                           width: 36,
                           height: 100,
@@ -342,7 +540,6 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                                       fontWeight: FontWeight.bold,
                                       color: color)),
                               const SizedBox(height: 4),
-                              // Handle de arrastre
                               ReorderableDragStartListener(
                                 index: index,
                                 child: Icon(Icons.drag_indicator,
@@ -351,8 +548,6 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                             ],
                           ),
                         ),
-
-                        // Miniatura de la foto
                         GestureDetector(
                           onTap: () => _editarDescripcion(index),
                           child: ClipRRect(
@@ -366,8 +561,6 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                             ),
                           ),
                         ),
-
-                        // Info: tipo + descripción
                         Expanded(
                           child: GestureDetector(
                             onTap: () => _editarDescripcion(index),
@@ -378,7 +571,6 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  // Badge de tipo
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 8, vertical: 3),
@@ -394,24 +586,26 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                                             fontWeight: FontWeight.bold,
                                             color: color)),
                                   ),
-                                  const SizedBox(height: 6),
-                                  // Descripción o placeholder
+                                  const SizedBox(height: 2),
+                                  Text(bloqueNombre,
+                                      style: TextStyle(fontSize: 9, color: Colors.grey.shade600)),
+                                  const SizedBox(height: 2),
                                   if (desc.isNotEmpty)
                                     Text(desc,
                                         style: const TextStyle(
-                                            fontSize: 13,
+                                            fontSize: 12,
                                             color: Colors.black87),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis)
                                   else
                                     Row(children: [
                                       Icon(Icons.edit,
-                                          size: 13,
+                                          size: 12,
                                           color: Colors.grey.shade400),
                                       const SizedBox(width: 4),
                                       Text('Toca para agregar descripción',
                                           style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize: 11,
                                               color: Colors.grey.shade400,
                                               fontStyle: FontStyle.italic)),
                                     ]),
@@ -420,8 +614,6 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                             ),
                           ),
                         ),
-
-                        // Botón eliminar
                         IconButton(
                           icon: const Icon(Icons.delete_outline,
                               color: Colors.red, size: 22),
@@ -562,8 +754,6 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
               decoration: BoxDecoration(color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
-
-          // Titulo + contador
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             const Text('Agregar Fotos',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -582,8 +772,6 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
               ),
           ]),
           const SizedBox(height: 14),
-
-          // Tipo
           const Align(alignment: Alignment.centerLeft,
             child: Text('Tipo de foto:',
                 style: TextStyle(fontSize: 13,
@@ -597,8 +785,6 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
             _chip('Averia',    Icons.warning_amber_rounded, Colors.red),
           ]),
           const SizedBox(height: 14),
-
-          // Descripcion
           const Align(alignment: Alignment.centerLeft,
             child: Text('Descripción (opcional):',
                 style: TextStyle(fontSize: 13,
@@ -622,7 +808,6 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 16),
-
           if (_cargando)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
@@ -657,7 +842,6 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
               onPressed: () => _tomar(ImageSource.gallery),
             ),
           ],
-
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,

@@ -3,6 +3,7 @@
 // Sistema Aduanal Integral — Previos + Reportes de Discrepancia
 // ============================================================
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
+// Desarrollado por: ISMAEL MORALES BARRIOS
 // Versión: 3.0 (fusión)
 // Cambios v3.0:
 //   - Módulo de Reportes de Discrepancia integrado
