@@ -31,7 +31,7 @@ class PrevioDetalleScreen extends StatelessWidget {
 
   Color _colorTipo(String tipo) {
     if (tipo == 'Averia')    return Colors.red.shade700;
-    if (tipo == 'Mercancia') return const Color(0xFF003087);
+    if (tipo == 'Mercancia') return const Color(0xFF2596BE);
     return Colors.orange.shade700;
   }
 
@@ -324,7 +324,7 @@ class PrevioDetalleScreen extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.all(24),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              CircularProgressIndicator(color: Color(0xFF003087)),
+              CircularProgressIndicator(color: Color(0xFF2596BE)),
               SizedBox(height: 12),
               Text('Generando PDF del Previo...'),
             ]),
@@ -389,13 +389,13 @@ class PrevioDetalleScreen extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(children: [
-        Icon(icon, color: const Color(0xFF003087), size: 20),
+        Icon(icon, color: const Color(0xFF2596BE), size: 20),
         const SizedBox(width: 8),
         Text(titulo,
             style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF003087))),
+                color: Color(0xFF2596BE))),
         const SizedBox(width: 8),
         Expanded(child: Divider(color: Colors.grey.shade300)),
       ]),
@@ -407,7 +407,7 @@ class PrevioDetalleScreen extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, size: 18, color: const Color(0xFF003087)),
+        Icon(icon, size: 18, color: const Color(0xFF2596BE)),
         const SizedBox(width: 8),
         Expanded(
           child: RichText(

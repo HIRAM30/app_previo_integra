@@ -107,7 +107,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
 
   Color _colorTipo(String tipo) {
     if (tipo == 'Averia')    return Colors.red.shade700;
-    if (tipo == 'Mercancia') return const Color(0xFF003087);
+    if (tipo == 'Mercancia') return const Color(0xFF2596BE);
     return Colors.orange.shade700;
   }
 
@@ -254,7 +254,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
             style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF003087)),
+                backgroundColor: const Color(0xFF2596BE)),
             child: const Text('Guardar',
                 style: TextStyle(color: Colors.white)),
           ),
@@ -387,7 +387,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
               IconButton(
                 tooltip: 'Agregar bloque',
                 onPressed: _nuevoBloque,
-                icon: const Icon(Icons.add_circle, color: Color(0xFF003087), size: 32),
+                icon: const Icon(Icons.add_circle, color: Color(0xFF2596BE), size: 32),
               ),
             ]),
             const SizedBox(height: 8),
@@ -405,7 +405,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(
                         '${bloque['nombre']} · $cantidad foto${cantidad == 1 ? '' : 's'}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF003087)),
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2596BE)),
                       ),
                       if ((bloque['informacion'] ?? '').isNotEmpty)
                         Text(bloque['informacion']!, style: const TextStyle(fontSize: 12)),
@@ -418,13 +418,13 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                       setState(() => _bloqueActivoId = bloque['id']);
                       _agregarFotos();
                     },
-                    icon: const Icon(Icons.add_a_photo_outlined, color: Color(0xFF003087)),
+                    icon: const Icon(Icons.add_a_photo_outlined, color: Color(0xFF2596BE)),
                   ),
                   IconButton(
                     tooltip: 'Editar bloque',
                     visualDensity: VisualDensity.compact,
                     onPressed: () => _editarBloque(bloque),
-                    icon: const Icon(Icons.edit_outlined, color: Color(0xFF003087)),
+                    icon: const Icon(Icons.edit_outlined, color: Color(0xFF2596BE)),
                   ),
                 ]),
               );
@@ -439,7 +439,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
             ElevatedButton(
               onPressed: _agregarFotos,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF003087),
+                backgroundColor: const Color(0xFF2596BE),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
@@ -696,7 +696,7 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
 
   Color get _color {
     if (_tipo == 'Averia')    return Colors.red.shade700;
-    if (_tipo == 'Mercancia') return const Color(0xFF003087);
+    if (_tipo == 'Mercancia') return const Color(0xFF2596BE);
     return Colors.orange.shade700;
   }
 
@@ -778,7 +778,7 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
                     fontWeight: FontWeight.bold, color: Colors.grey))),
           const SizedBox(height: 8),
           Row(children: [
-            _chip('Mercancia', Icons.inventory_2,           const Color(0xFF003087)),
+            _chip('Mercancia', Icons.inventory_2,           const Color(0xFF2596BE)),
             const SizedBox(width: 8),
             _chip('Documento', Icons.description,           Colors.orange),
             const SizedBox(width: 8),
