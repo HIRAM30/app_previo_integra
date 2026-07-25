@@ -366,7 +366,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
             const SizedBox(height: 12),
 
             // ─── BLOQUES DEL PREVIO ───
-            const SeccionHeader(titulo: 'Bloques del previo', icono: Icons.inventory_2_outlined),
+            const SeccionHeader(titulo: 'Particiones del previo', icono: Icons.inventory_2_outlined),
             Row(children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
