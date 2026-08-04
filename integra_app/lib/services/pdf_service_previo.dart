@@ -1,8 +1,8 @@
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// services/pdf_service_previo.dart v5.1
-// Diseño: 2 fotos por hoja, índice con SECCIONES y PARTICIONES
+// services/pdf_service_previo.dart v6.1
+// Corrección: PARTIDAS muestran solo "Partida X" sin duplicar
 // ============================================================
 
 import 'dart:io';
@@ -35,29 +35,34 @@ class PdfServicePrevio {
       final tipos = List<String>.from(previo['fotosTipos'] ?? []);
       final descs = List<String>.from(previo['fotosDescripciones'] ?? []);
       final fotoBloques = List<String>.from(previo['fotosBloques'] ?? []);
-      final bloques = List<Map>.from(previo['bloques'] ?? []);
       final secciones = List<Map>.from(previo['secciones'] ?? []);
-      final particiones = List<Map>.from(previo['particiones'] ?? []);
+      final partidas = List<Map>.from(previo['partidas'] ?? previo['particiones'] ?? []);
 
+      final tipoBulto = previo['tipoBulto'] ?? '';
+      final vieneConFactura = previo['vieneConFactura'] ?? '';
+
+      // Mapa de destinos: Secciones usan su nombre, Partidas usan "Partida X"
       final todosLosDestinos = <String, Map>{};
       final tipoDestino = <String, String>{};
 
       for (final s in secciones) {
         final id = (s['id'] ?? '').toString();
-        todosLosDestinos[id] = s;
+        todosLosDestinos[id] = {
+          'id': id,
+          'nombre': 'SECCION: ${s['nombre'] ?? ''}',
+          'informacion': s['informacion'] ?? '',
+        };
         tipoDestino[id] = 'seccion';
       }
-      for (final p in particiones) {
+      for (int i = 0; i < partidas.length; i++) {
+        final p = partidas[i];
         final id = (p['id'] ?? '').toString();
-        todosLosDestinos[id] = p;
-        tipoDestino[id] = 'particion';
-      }
-      for (final b in bloques) {
-        final id = (b['id'] ?? '').toString();
-        if (!todosLosDestinos.containsKey(id)) {
-          todosLosDestinos[id] = b;
-          tipoDestino[id] = 'particion';
-        }
+        todosLosDestinos[id] = {
+          'id': id,
+          'nombre': 'PARTIDA ${i + 1}',
+          'informacion': p['informacion'] ?? '',
+        };
+        tipoDestino[id] = 'partida';
       }
 
       final ordenDestino = <String, int>{};
@@ -65,14 +70,8 @@ class PdfServicePrevio {
       for (final s in secciones) {
         ordenDestino[(s['id'] ?? '').toString()] = orden++;
       }
-      for (final p in particiones) {
+      for (final p in partidas) {
         ordenDestino[(p['id'] ?? '').toString()] = orden++;
-      }
-      for (final b in bloques) {
-        final id = (b['id'] ?? '').toString();
-        if (!ordenDestino.containsKey(id)) {
-          ordenDestino[id] = orden++;
-        }
       }
 
       final validas = <Map<String, dynamic>>[];
@@ -95,7 +94,7 @@ class PdfServicePrevio {
             'desc': i < descs.length ? descs[i] : '',
             'bloqueId': bloqueId,
             'destino': todosLosDestinos[bloqueId],
-            'tipoDestino': tipoDestino[bloqueId] ?? 'particion',
+            'tipoDestino': tipoDestino[bloqueId] ?? 'partida',
             'ordenOriginal': i,
           });
         }
@@ -151,6 +150,8 @@ class PdfServicePrevio {
               if ((previo['almacen'] ?? '').isNotEmpty) _row('Almacen', previo['almacen']),
               if ((previo['house'] ?? '').isNotEmpty) _row('House', previo['house']),
               _row('Fecha', '${previo['fecha'] ?? ''}'.split('T').first),
+              if (tipoBulto.isNotEmpty) _row('Tipo de Bulto', tipoBulto),
+              if (vieneConFactura.isNotEmpty) _row('Viene con Factura', vieneConFactura),
               if ((previo['aduana'] ?? '').toString().isNotEmpty) _row('Aduana', previo['aduana'].toString()),
               if ((previo['patente'] ?? '').toString().isNotEmpty) _row('Patente', previo['patente'].toString()),
               if ((previo['tipoOperacion'] ?? '').toString().isNotEmpty) _row('Tipo de Operacion', previo['tipoOperacion'].toString()),
@@ -164,13 +165,13 @@ class PdfServicePrevio {
           pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly, children: [
             _statBox('Total Fotos', '${validas.length}', _azul, PdfColor.fromInt(0xFFE8ECF3)),
             _statBox('Secciones', '${secciones.length}', _naranja, _naranjaClaro),
-            _statBox('Particiones', '${particiones.length}', _verde, PdfColor.fromInt(0xFFE8F5E9)),
+            _statBox('Partidas', '${partidas.length}', _verde, PdfColor.fromInt(0xFFE8F5E9)),
           ]),
           pw.SizedBox(height: 16),
           pw.Text('Indice de fotografias:',
               style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: _azul)),
           pw.SizedBox(height: 8),
-          ..._indiceConSeccionesYParticiones(validas),
+          ..._indiceConSeccionesYPartidas(validas),
         ],
       ));
 
@@ -229,9 +230,7 @@ class PdfServicePrevio {
   static pw.Widget _statBox(String label, String value, PdfColor textColor, PdfColor bgColor) {
     return pw.Container(
       padding: pw.EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: pw.BoxDecoration(
-        color: bgColor,
-      ),
+      decoration: pw.BoxDecoration(color: bgColor),
       child: pw.Column(children: [
         pw.Text(value, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: textColor)),
         pw.Text(label, style: pw.TextStyle(fontSize: 7, color: textColor)),
@@ -245,7 +244,7 @@ class PdfServicePrevio {
     final desc = foto['desc'] as String;
     final color = _colorTipo(tipo);
     final destino = foto['destino'] as Map?;
-    final tipoDestino = foto['tipoDestino'] as String? ?? 'particion';
+    final tipoDestino = foto['tipoDestino'] as String? ?? 'partida';
 
     return pw.Container(
       decoration: pw.BoxDecoration(border: pw.Border.all(color: color, width: 2)),
@@ -274,7 +273,7 @@ class PdfServicePrevio {
             width: double.infinity, padding: pw.EdgeInsets.all(6),
             color: tipoDestino == 'seccion' ? _naranjaClaro : _azulClaro,
             child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Text('${tipoDestino == 'seccion' ? 'SECCION' : 'PARTICION'}: ${destino['nombre'] ?? ''}',
+              pw.Text('${destino['nombre'] ?? ''}',
                   style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold,
                       color: tipoDestino == 'seccion' ? _naranja : _azul)),
               if ((destino['informacion'] ?? '').toString().isNotEmpty)
@@ -302,13 +301,13 @@ class PdfServicePrevio {
     );
   }
 
-  static List<pw.Widget> _indiceConSeccionesYParticiones(List<Map<String, dynamic>> fotos) {
+  static List<pw.Widget> _indiceConSeccionesYPartidas(List<Map<String, dynamic>> fotos) {
     final resultado = <pw.Widget>[];
     String? destinoActual;
 
     for (final entry in fotos.asMap().entries) {
       final id = entry.value['bloqueId'] as String? ?? '';
-      final tipoDest = entry.value['tipoDestino'] as String? ?? 'particion';
+      final tipoDest = entry.value['tipoDestino'] as String? ?? 'partida';
       final destino = entry.value['destino'] as Map?;
 
       if (id != destinoActual) {
@@ -316,7 +315,6 @@ class PdfServicePrevio {
         final esSeccion = tipoDest == 'seccion';
         final colorFondo = esSeccion ? _naranjaClaro : _azulClaro;
         final colorTexto = esSeccion ? _naranja : _azul;
-        final etiqueta = esSeccion ? 'SECCION' : 'PARTICION';
 
         resultado.add(pw.Container(
           width: double.infinity,
@@ -324,7 +322,7 @@ class PdfServicePrevio {
           padding: pw.EdgeInsets.all(7),
           color: colorFondo,
           child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-            pw.Text('$etiqueta: ${destino?['nombre'] ?? 'Sin nombre'}',
+            pw.Text(destino?['nombre'] ?? 'Sin nombre',
                 style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: colorTexto)),
             if ((destino?['informacion'] ?? '').toString().isNotEmpty)
               pw.Text(destino!['informacion'].toString(), style: pw.TextStyle(fontSize: 8)),

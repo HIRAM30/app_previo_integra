@@ -1,8 +1,8 @@
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// screens/nuevo_previo_screen.dart v5.3
-// CORRECCIÓN: Eliminado botón de agregar fotos inferior
+// screens/nuevo_previo_screen.dart v6.0
+// Mejoras: Tipo de bulto, Partidas, Factura Sí/No
 // ============================================================
 
 import 'dart:io';
@@ -30,9 +30,31 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
   final _houseCtrl = TextEditingController();
   final _observacionesCtrl = TextEditingController();
 
+  // Tipo de bulto
+  String? _tipoBulto;
+  final List<String> _tiposBulto = [
+    'Palets de madera',
+    'Carton',
+    'Madera',
+    'Cuñete',
+    'Plastico',
+    'Tambos',
+    'Cajas de plastico',
+    'Sacos',
+    'Bidones',
+    'Pacas',
+    'Tarimas',
+    'Contenedor completo',
+    'Carga suelta',
+    'Otro',
+  ];
+
+  // ¿Viene con factura?
+  String? _vieneConFactura;
+
   final List<Map<String, dynamic>> _fotos = [];
   final List<Map<String, String>> _secciones = [];
-  final List<Map<String, String>> _particiones = [];
+  final List<Map<String, String>> _partidas = [];
 
   String? _destinoActivoId;
   String? _destinoActivoNombre;
@@ -48,6 +70,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
       _almacenCtrl.text = p['almacen'] ?? '';
       _houseCtrl.text = p['house'] ?? '';
       _observacionesCtrl.text = p['observaciones'] ?? '';
+      _tipoBulto = p['tipoBulto'];
+      _vieneConFactura = p['vieneConFactura'];
 
       final rutas = List<String>.from(p['fotos'] ?? []);
       final tipos = List<String>.from(p['fotosTipos'] ?? []);
@@ -63,11 +87,11 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
         });
       }
 
-      for (final raw in List.from(p['particiones'] ?? [])) {
+      for (final raw in List.from(p['partidas'] ?? p['particiones'] ?? [])) {
         final part = Map<String, String>.from(raw as Map);
-        _particiones.add({
+        _partidas.add({
           'id': part['id'] ?? DateTime.now().microsecondsSinceEpoch.toString(),
-          'nombre': part['nombre'] ?? 'Particion',
+          'nombre': part['nombre'] ?? 'Partida',
           'informacion': part['informacion'] ?? '',
         });
       }
@@ -96,9 +120,9 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
       if (_secciones.isNotEmpty) {
         _destinoActivoId = _secciones.first['id'];
         _destinoActivoNombre = '${_secciones.first['nombre']} (Seccion)';
-      } else if (_particiones.isNotEmpty) {
-        _destinoActivoId = _particiones.first['id'];
-        _destinoActivoNombre = '${_particiones.first['nombre']} (Particion)';
+      } else if (_partidas.isNotEmpty) {
+        _destinoActivoId = _partidas.first['id'];
+        _destinoActivoNombre = '${_partidas.first['nombre']} (Partida)';
       }
     }
   }
@@ -107,8 +131,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
     for (final s in _secciones) {
       if (s['id'] == id) return '${s['nombre']} (Seccion)';
     }
-    for (final p in _particiones) {
-      if (p['id'] == id) return '${p['nombre']} (Particion)';
+    for (int i = 0; i < _partidas.length; i++) {
+      if (_partidas[i]['id'] == id) return 'Partida ${i + 1}: ${_partidas[i]['nombre']}';
     }
     return 'Sin destino';
   }
@@ -187,37 +211,37 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
     }
   }
 
-  Future<void> _nuevaParticion() async {
+  Future<void> _nuevaPartida() async {
     final nombreCtrl = TextEditingController();
     final infoCtrl = TextEditingController();
-    final result = await _dialogoEntidad('Nueva Particion', 'Mercancia',
+    final result = await _dialogoEntidad('Nueva Partida', 'Mercancia',
         'Descripcion', nombreCtrl, infoCtrl);
     if (result != null) {
       final id = DateTime.now().microsecondsSinceEpoch.toString();
       setState(() {
-        _particiones.add({'id': id, 'nombre': result['nombre']!, 'informacion': result['informacion']!});
+        _partidas.add({'id': id, 'nombre': result['nombre']!, 'informacion': result['informacion']!});
         _destinoActivoId = id;
-        _destinoActivoNombre = '${result['nombre']} (Particion)';
+        _destinoActivoNombre = 'Partida ${_partidas.length}: ${result['nombre']}';
       });
     }
   }
 
-  Future<void> _editarParticion(int index) async {
-    final p = _particiones[index];
+  Future<void> _editarPartida(int index) async {
+    final p = _partidas[index];
     final nombreCtrl = TextEditingController(text: p['nombre']);
     final infoCtrl = TextEditingController(text: p['informacion']);
-    final result = await _dialogoEntidad('Editar Particion', 'Tipo de mercancia', 'Descripcion', nombreCtrl, infoCtrl);
+    final result = await _dialogoEntidad('Editar Partida', 'Mercancia', 'Descripcion', nombreCtrl, infoCtrl);
     if (result != null) {
       setState(() {
-        _particiones[index]['nombre'] = result['nombre']!;
-        _particiones[index]['informacion'] = result['informacion']!;
+        _partidas[index]['nombre'] = result['nombre']!;
+        _partidas[index]['informacion'] = result['informacion']!;
       });
     }
   }
 
   Future<void> _agregarFotos() async {
     if (_destinoActivoId == null) {
-      _snack('Selecciona primero una Seccion o Particion');
+      _snack('Selecciona primero una Seccion o Partida');
       return;
     }
     await showModalBottomSheet(
@@ -278,8 +302,13 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
       for (final s in _secciones) {
         todosLosBloques.add({'id': s['id']!, 'nombre': s['nombre']!, 'informacion': s['informacion']!});
       }
-      for (final p in _particiones) {
-        todosLosBloques.add({'id': p['id']!, 'nombre': p['nombre']!, 'informacion': p['informacion']!});
+      for (int i = 0; i < _partidas.length; i++) {
+        final p = _partidas[i];
+        todosLosBloques.add({
+          'id': p['id']!,
+          'nombre': 'Partida ${i + 1}: ${p['nombre']!}',
+          'informacion': p['informacion']!,
+        });
       }
 
       final data = {
@@ -290,6 +319,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
         'house': _houseCtrl.text.trim(),
         'fecha': DateTime.now().toIso8601String(),
         'observaciones': _observacionesCtrl.text.trim(),
+        'tipoBulto': _tipoBulto,
+        'vieneConFactura': _vieneConFactura,
         'fotos': _fotos.map((f) => (f['file'] as File).path).toList(),
         'fotosBytes': _fotos.map((f) => String.fromCharCodes(f['bytes'] as Uint8List)).toList(),
         'fotosTipos': _fotos.map((f) => f['tipo'] as String).toList(),
@@ -297,7 +328,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
         'fotosBloques': _fotos.map((f) => (f['bloqueId'] as String?) ?? '').toList(),
         'bloques': todosLosBloques,
         'secciones': _secciones,
-        'particiones': _particiones,
+        'partidas': _partidas,
+        'particiones': _partidas, // Compatibilidad
       };
 
       await box.put(id, data);
@@ -343,8 +375,62 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
           _campo(_clienteCtrl, 'Cliente *', Icons.business, hint: 'Nombre del dueno de la carga'),
           _campo(_almacenCtrl, 'Almacen', Icons.warehouse, hint: 'Nombre o numero del almacen'),
           _campo(_houseCtrl, 'Numero House Completo', Icons.numbers, hint: 'Ej: CDGO633069-8', mayusc: true),
+
+          // ═══════════ TIPO DE BULTO ═══════════
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            value: _tipoBulto,
+            decoration: const InputDecoration(
+              labelText: 'Tipo de Bulto',
+              hintText: 'Selecciona el tipo de embalaje',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.inventory_2),
+            ),
+            items: _tiposBulto.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+            onChanged: (val) => setState(() => _tipoBulto = val),
+          ),
+
+          // ═══════════ ¿VIENE CON FACTURA? ═══════════
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('¿Viene con factura?',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: const Text('Si'),
+                    value: 'Si',
+                    groupValue: _vieneConFactura,
+                    onChanged: (val) => setState(() => _vieneConFactura = val),
+                    activeColor: const Color(0xFF2596BE),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: const Text('No'),
+                    value: 'No',
+                    groupValue: _vieneConFactura,
+                    onChanged: (val) => setState(() => _vieneConFactura = val),
+                    activeColor: const Color(0xFF2596BE),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ]),
+            ]),
+          ),
+
           Padding(
-            padding: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.only(top: 14, bottom: 14),
             child: TextField(
               controller: _observacionesCtrl, maxLines: 3,
               decoration: const InputDecoration(labelText: 'Observaciones', hintText: 'Notas adicionales...',
@@ -388,37 +474,38 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
             )),
           const SizedBox(height: 16),
 
-          // ═══════════ PARTICIONES ═══════════
+          // ═══════════ PARTIDAS ═══════════
           Row(children: [
             const Icon(Icons.inventory_2_outlined, color: Colors.blue, size: 22),
             const SizedBox(width: 8),
-            const Expanded(child: Text('Particiones',
+            const Expanded(child: Text('Partidas',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue))),
-            IconButton(onPressed: _nuevaParticion, icon: const Icon(Icons.add_circle, color: Colors.blue, size: 28)),
+            IconButton(onPressed: _nuevaPartida, icon: const Icon(Icons.add_circle, color: Colors.blue, size: 28)),
           ]),
           const SizedBox(height: 6),
-          if (_particiones.isEmpty)
+          if (_partidas.isEmpty)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8)),
-              child: const Text('Sin particiones', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center),
+              child: const Text('Sin partidas', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center),
             )
           else
-            ..._particiones.asMap().entries.map((e) => _buildCard(
+            ..._partidas.asMap().entries.map((e) => _buildCard(
               icon: Icons.inventory_2_outlined, color: Colors.blue,
-              nombre: e.value['nombre']!, informacion: e.value['informacion']!,
+              nombre: 'Partida ${e.key + 1}: ${e.value['nombre']!}',
+              informacion: e.value['informacion']!,
               cantFotos: _fotos.where((f) => f['bloqueId'] == e.value['id']).length,
-              tipo: 'PARTICION', seleccionado: _destinoActivoId == e.value['id'],
+              tipo: 'PARTIDA ${e.key + 1}', seleccionado: _destinoActivoId == e.value['id'],
               onSeleccionar: () => setState(() {
                 _destinoActivoId = e.value['id'];
-                _destinoActivoNombre = '${e.value['nombre']} (Particion)';
+                _destinoActivoNombre = 'Partida ${e.key + 1}: ${e.value['nombre']}';
               }),
               onFotos: () {
                 _destinoActivoId = e.value['id'];
-                _destinoActivoNombre = '${e.value['nombre']} (Particion)';
+                _destinoActivoNombre = 'Partida ${e.key + 1}: ${e.value['nombre']}';
                 _agregarFotos();
               },
-              onEditar: () => _editarParticion(e.key),
+              onEditar: () => _editarPartida(e.key),
             )),
           const Divider(),
           const SizedBox(height: 12),
