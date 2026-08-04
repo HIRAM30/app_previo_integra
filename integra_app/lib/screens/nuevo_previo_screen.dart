@@ -1,8 +1,8 @@
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// screens/nuevo_previo_screen.dart v6.0
-// Mejoras: Tipo de bulto, Partidas, Factura Sí/No
+// screens/nuevo_previo_screen.dart v6.1
+// Mejoras: Tipo de bulto MULTISELECCIÓN
 // ============================================================
 
 import 'dart:io';
@@ -30,8 +30,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
   final _houseCtrl = TextEditingController();
   final _observacionesCtrl = TextEditingController();
 
-  // Tipo de bulto
-  String? _tipoBulto;
+  // Tipo de bulto - MULTISELECCIÓN
+  List<String> _tiposBultoSeleccionados = [];
   final List<String> _tiposBulto = [
     'Palets de madera',
     'Carton',
@@ -49,7 +49,6 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
     'Otro',
   ];
 
-  // ¿Viene con factura?
   String? _vieneConFactura;
 
   final List<Map<String, dynamic>> _fotos = [];
@@ -70,8 +69,12 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
       _almacenCtrl.text = p['almacen'] ?? '';
       _houseCtrl.text = p['house'] ?? '';
       _observacionesCtrl.text = p['observaciones'] ?? '';
-      _tipoBulto = p['tipoBulto'];
       _vieneConFactura = p['vieneConFactura'];
+
+      _tiposBultoSeleccionados = List<String>.from(p['tiposBulto'] ?? []);
+      if (_tiposBultoSeleccionados.isEmpty && p['tipoBulto'] != null && (p['tipoBulto'] as String).isNotEmpty) {
+        _tiposBultoSeleccionados = [p['tipoBulto'] as String];
+      }
 
       final rutas = List<String>.from(p['fotos'] ?? []);
       final tipos = List<String>.from(p['fotosTipos'] ?? []);
@@ -122,7 +125,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
         _destinoActivoNombre = '${_secciones.first['nombre']} (Seccion)';
       } else if (_partidas.isNotEmpty) {
         _destinoActivoId = _partidas.first['id'];
-        _destinoActivoNombre = '${_partidas.first['nombre']} (Partida)';
+        _destinoActivoNombre = 'Partida 1: ${_partidas.first['nombre']}';
       }
     }
   }
@@ -319,7 +322,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
         'house': _houseCtrl.text.trim(),
         'fecha': DateTime.now().toIso8601String(),
         'observaciones': _observacionesCtrl.text.trim(),
-        'tipoBulto': _tipoBulto,
+        'tipoBulto': _tiposBultoSeleccionados.join(', '),
+        'tiposBulto': _tiposBultoSeleccionados,
         'vieneConFactura': _vieneConFactura,
         'fotos': _fotos.map((f) => (f['file'] as File).path).toList(),
         'fotosBytes': _fotos.map((f) => String.fromCharCodes(f['bytes'] as Uint8List)).toList(),
@@ -329,7 +333,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
         'bloques': todosLosBloques,
         'secciones': _secciones,
         'partidas': _partidas,
-        'particiones': _partidas, // Compatibilidad
+        'particiones': _partidas,
       };
 
       await box.put(id, data);
@@ -348,6 +352,45 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
   }
 
   void _snack(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+  void _mostrarSeleccionBultos() {
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Tipos de Bulto'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: _tiposBulto.map((tipo) {
+                final seleccionado = _tiposBultoSeleccionados.contains(tipo);
+                return CheckboxListTile(
+                  title: Text(tipo),
+                  value: seleccionado,
+                  activeColor: const Color(0xFF2596BE),
+                  onChanged: (val) {
+                    setDialogState(() {
+                      if (val == true) {
+                        _tiposBultoSeleccionados.add(tipo);
+                      } else {
+                        _tiposBultoSeleccionados.remove(tipo);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Listo'),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) => setState(() {}));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -376,18 +419,28 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
           _campo(_almacenCtrl, 'Almacen', Icons.warehouse, hint: 'Nombre o numero del almacen'),
           _campo(_houseCtrl, 'Numero House Completo', Icons.numbers, hint: 'Ej: CDGO633069-8', mayusc: true),
 
-          // ═══════════ TIPO DE BULTO ═══════════
+          // ═══════════ TIPO DE BULTO (MULTISELECCIÓN) ═══════════
           const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            value: _tipoBulto,
-            decoration: const InputDecoration(
-              labelText: 'Tipo de Bulto',
-              hintText: 'Selecciona el tipo de embalaje',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.inventory_2),
+          InkWell(
+            onTap: () => _mostrarSeleccionBultos(),
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Tipo de Bulto',
+                hintText: 'Selecciona los tipos de embalaje',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.inventory_2),
+                suffixIcon: Icon(Icons.arrow_drop_down),
+              ),
+              child: Text(
+                _tiposBultoSeleccionados.isEmpty
+                    ? 'Selecciona los tipos de embalaje'
+                    : _tiposBultoSeleccionados.join(', '),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: _tiposBultoSeleccionados.isEmpty ? Colors.grey : Colors.black87,
+                ),
+              ),
             ),
-            items: _tiposBulto.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-            onChanged: (val) => setState(() => _tipoBulto = val),
           ),
 
           // ═══════════ ¿VIENE CON FACTURA? ═══════════
@@ -399,7 +452,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('¿Viene con factura?',
+              const Text('Viene con factura?',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Row(children: [
@@ -510,10 +563,9 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
           const Divider(),
           const SizedBox(height: 12),
 
-          // ═══════════ FOTOGRAFÍAS ═══════════
           const SeccionHeader(titulo: 'Fotografias', icono: Icons.photo_camera),
           const SizedBox(height: 10),
-          Text('Total: ${_fotos.length}  •  Doc: $docCount  •  Averia: $avCount  •  Merc: $mercCount',
+          Text('Total: ${_fotos.length}  o  Doc: $docCount  o  Averia: $avCount  o  Merc: $mercCount',
               textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
 
           if (_fotos.isNotEmpty) ...[

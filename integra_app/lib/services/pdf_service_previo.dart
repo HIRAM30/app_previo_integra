@@ -1,8 +1,8 @@
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// services/pdf_service_previo.dart v6.1
-// Corrección: PARTIDAS muestran solo "Partida X" sin duplicar
+// services/pdf_service_previo.dart v6.2
+// Incluye: Tipo de Bulto multiselección en PDF
 // ============================================================
 
 import 'dart:io';
@@ -19,7 +19,6 @@ class PdfServicePrevio {
   static final _naranja = PdfColor.fromInt(0xFFE65100);
   static final _verde = PdfColor.fromInt(0xFF2E7D32);
   static final _gris = PdfColor.fromInt(0xFFE0E0E0);
-  static final _grisClaro = PdfColor.fromInt(0xFFEEF2F7);
   static final _naranjaClaro = PdfColor.fromInt(0xFFFFF3E0);
   static final _azulClaro = PdfColor.fromInt(0xFFE3F2FD);
 
@@ -38,10 +37,13 @@ class PdfServicePrevio {
       final secciones = List<Map>.from(previo['secciones'] ?? []);
       final partidas = List<Map>.from(previo['partidas'] ?? previo['particiones'] ?? []);
 
-      final tipoBulto = previo['tipoBulto'] ?? '';
+      // Tipo de bulto - soporta formato antiguo y nuevo (multiselección)
+      final tipoBulto = (previo['tiposBulto'] is List && (previo['tiposBulto'] as List).isNotEmpty)
+          ? (previo['tiposBulto'] as List).join(', ')
+          : previo['tipoBulto'] ?? '';
+      
       final vieneConFactura = previo['vieneConFactura'] ?? '';
 
-      // Mapa de destinos: Secciones usan su nombre, Partidas usan "Partida X"
       final todosLosDestinos = <String, Map>{};
       final tipoDestino = <String, String>{};
 
