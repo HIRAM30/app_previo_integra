@@ -59,9 +59,10 @@ class PdfServicePrevio {
       for (int i = 0; i < partidas.length; i++) {
         final p = partidas[i];
         final id = (p['id'] ?? '').toString();
+        final nombrePartida = (p['nombre'] ?? '').toString();
         todosLosDestinos[id] = {
           'id': id,
-          'nombre': 'PARTIDA ${i + 1}',
+          'nombre': nombrePartida.isNotEmpty ? 'PARTIDA ${i + 1}: $nombrePartida' : 'PARTIDA ${i + 1}',
           'informacion': p['informacion'] ?? '',
         };
         tipoDestino[id] = 'partida';

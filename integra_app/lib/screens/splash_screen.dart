@@ -47,6 +47,7 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.wait([
       Hive.openBox('previos'),
       Hive.openBox('reportes'),
+      Hive.openBox('previos_borrador'),
     ]);
     await Future.delayed(const Duration(milliseconds: 1600));
     if (mounted) {

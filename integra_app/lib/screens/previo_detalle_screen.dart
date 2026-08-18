@@ -34,6 +34,7 @@ class PrevioDetalleScreen extends StatelessWidget {
     final fotos = List<String>.from(previo['fotos'] ?? []);
     final tipos = List<String>.from(previo['fotosTipos'] ?? []);
     final fotosBytes = List<String>.from(previo['fotosBytes'] ?? []);
+    final fotosBloques = List<String>.from(previo['fotosBloques'] ?? []);
 
     final indexados = List.generate(fotos.length,
         (i) => {
@@ -146,6 +147,8 @@ class PrevioDetalleScreen extends StatelessWidget {
                 itemCount: bloques.length,
                 itemBuilder: (_, i) {
                   final b = bloques[i];
+                  final bloqueId = (b['id'] ?? '').toString();
+                  final cantFotosBloque = fotosBloques.where((id) => id == bloqueId).length;
                   return Container(
                     width: 140,
                     margin: const EdgeInsets.only(right: 8),
@@ -173,7 +176,7 @@ class PrevioDetalleScreen extends StatelessWidget {
                                 fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2596BE)),
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         const Spacer(),
-                        Text('${fotos.length} fotos',
+                        Text('$cantFotosBloque foto${cantFotosBloque != 1 ? 's' : ''}',
                             style: const TextStyle(fontSize: 10, color: Colors.grey)),
                       ],
                     ),

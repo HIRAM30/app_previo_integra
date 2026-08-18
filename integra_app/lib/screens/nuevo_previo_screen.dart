@@ -5,6 +5,7 @@
 // Mejoras: Tipo de bulto MULTISELECCIÓN
 // ============================================================
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -13,6 +14,9 @@ import 'package:image_picker/image_picker.dart';
 
 import '../utils/image_helper.dart';
 import '../widgets/seccion_header.dart';
+
+const String _kBorradorBoxName = 'previos_borrador';
+const String _kBorradorKey = 'actual';
 
 class NuevoPrevioScreen extends StatefulWidget {
   final Map? previoEditar;
@@ -23,7 +27,7 @@ class NuevoPrevioScreen extends StatefulWidget {
   State<NuevoPrevioScreen> createState() => _NuevoPrevioScreenState();
 }
 
-class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
+class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> with WidgetsBindingObserver {
   final _referenciaCtrl = TextEditingController();
   final _clienteCtrl = TextEditingController();
   final _almacenCtrl = TextEditingController();
@@ -59,75 +63,228 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
   String? _destinoActivoNombre;
   bool _isSaving = false;
 
+  Timer? _autoguardadoTimer;
+  bool _guardadoConExito = false;
+  bool _yaRevisoBorrador = false;
+
   @override
+
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final p = widget.previoEditar;
     if (p != null) {
-      _referenciaCtrl.text = p['referencia'] ?? '';
-      _clienteCtrl.text = p['cliente'] ?? '';
-      _almacenCtrl.text = p['almacen'] ?? '';
-      _houseCtrl.text = p['house'] ?? '';
-      _observacionesCtrl.text = p['observaciones'] ?? '';
-      _vieneConFactura = p['vieneConFactura'];
+      _poblarDesdeMapa(p);
+    }
+    _iniciarAutoguardado();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revisarBorradorPendiente());
+  }
 
-      _tiposBultoSeleccionados = List<String>.from(p['tiposBulto'] ?? []);
-      if (_tiposBultoSeleccionados.isEmpty && p['tipoBulto'] != null && (p['tipoBulto'] as String).isNotEmpty) {
-        _tiposBultoSeleccionados = [p['tipoBulto'] as String];
+  /// Llena todos los campos del formulario a partir de un mapa de datos
+  /// (usado tanto al editar un previo existente como al restaurar un borrador).
+  void _poblarDesdeMapa(Map p) {
+    _referenciaCtrl.text = p['referencia'] ?? '';
+    _clienteCtrl.text = p['cliente'] ?? '';
+    _almacenCtrl.text = p['almacen'] ?? '';
+    _houseCtrl.text = p['house'] ?? '';
+    _observacionesCtrl.text = p['observaciones'] ?? '';
+    _vieneConFactura = p['vieneConFactura'];
+
+    _tiposBultoSeleccionados = List<String>.from(p['tiposBulto'] ?? []);
+    if (_tiposBultoSeleccionados.isEmpty && p['tipoBulto'] != null && (p['tipoBulto'] as String).isNotEmpty) {
+      _tiposBultoSeleccionados = [p['tipoBulto'] as String];
+    }
+
+    final rutas = List<String>.from(p['fotos'] ?? []);
+    final tipos = List<String>.from(p['fotosTipos'] ?? []);
+    final descs = List<String>.from(p['fotosDescripciones'] ?? []);
+    final fotosBytes = List<String>.from(p['fotosBytes'] ?? []);
+
+    _secciones.clear();
+    for (final raw in List.from(p['secciones'] ?? [])) {
+      final s = Map<String, String>.from(raw as Map);
+      _secciones.add({
+        'id': s['id'] ?? DateTime.now().microsecondsSinceEpoch.toString(),
+        'nombre': s['nombre'] ?? 'Seccion',
+        'informacion': s['informacion'] ?? '',
+      });
+    }
+
+    _partidas.clear();
+    for (final raw in List.from(p['partidas'] ?? p['particiones'] ?? [])) {
+      final part = Map<String, String>.from(raw as Map);
+      _partidas.add({
+        'id': part['id'] ?? DateTime.now().microsecondsSinceEpoch.toString(),
+        'nombre': part['nombre'] ?? 'Partida',
+        'informacion': part['informacion'] ?? '',
+      });
+    }
+
+    _fotos.clear();
+    final fotosBloques = List<String>.from(p['fotosBloques'] ?? []);
+    for (int i = 0; i < rutas.length; i++) {
+      Uint8List? bytes;
+      if (i < fotosBytes.length && fotosBytes[i].isNotEmpty) {
+        try { bytes = Uint8List.fromList(fotosBytes[i].codeUnits); } catch (_) {}
       }
-
-      final rutas = List<String>.from(p['fotos'] ?? []);
-      final tipos = List<String>.from(p['fotosTipos'] ?? []);
-      final descs = List<String>.from(p['fotosDescripciones'] ?? []);
-      final fotosBytes = List<String>.from(p['fotosBytes'] ?? []);
-
-      for (final raw in List.from(p['secciones'] ?? [])) {
-        final s = Map<String, String>.from(raw as Map);
-        _secciones.add({
-          'id': s['id'] ?? DateTime.now().microsecondsSinceEpoch.toString(),
-          'nombre': s['nombre'] ?? 'Seccion',
-          'informacion': s['informacion'] ?? '',
+      if (bytes == null) {
+        final file = File(rutas[i]);
+        if (file.existsSync()) bytes = file.readAsBytesSync();
+      }
+      if (bytes != null) {
+        _fotos.add({
+          'file': File(rutas[i]),
+          'bytes': bytes,
+          'tipo': i < tipos.length ? tipos[i] : 'Mercancia',
+          'descripcion': i < descs.length ? descs[i] : '',
+          'bloqueId': i < fotosBloques.length ? fotosBloques[i] : '',
         });
-      }
-
-      for (final raw in List.from(p['partidas'] ?? p['particiones'] ?? [])) {
-        final part = Map<String, String>.from(raw as Map);
-        _partidas.add({
-          'id': part['id'] ?? DateTime.now().microsecondsSinceEpoch.toString(),
-          'nombre': part['nombre'] ?? 'Partida',
-          'informacion': part['informacion'] ?? '',
-        });
-      }
-
-      final fotosBloques = List<String>.from(p['fotosBloques'] ?? []);
-      for (int i = 0; i < rutas.length; i++) {
-        Uint8List? bytes;
-        if (i < fotosBytes.length && fotosBytes[i].isNotEmpty) {
-          try { bytes = Uint8List.fromList(fotosBytes[i].codeUnits); } catch (_) {}
-        }
-        if (bytes == null) {
-          final file = File(rutas[i]);
-          if (file.existsSync()) bytes = file.readAsBytesSync();
-        }
-        if (bytes != null) {
-          _fotos.add({
-            'file': File(rutas[i]),
-            'bytes': bytes,
-            'tipo': i < tipos.length ? tipos[i] : 'Mercancia',
-            'descripcion': i < descs.length ? descs[i] : '',
-            'bloqueId': i < fotosBloques.length ? fotosBloques[i] : '',
-          });
-        }
-      }
-
-      if (_secciones.isNotEmpty) {
-        _destinoActivoId = _secciones.first['id'];
-        _destinoActivoNombre = '${_secciones.first['nombre']} (Seccion)';
-      } else if (_partidas.isNotEmpty) {
-        _destinoActivoId = _partidas.first['id'];
-        _destinoActivoNombre = 'Partida 1: ${_partidas.first['nombre']}';
       }
     }
+
+    if (p['destinoActivoId'] != null) {
+      _destinoActivoId = p['destinoActivoId'] as String?;
+      _destinoActivoNombre = p['destinoActivoNombre'] as String?;
+    } else if (_secciones.isNotEmpty) {
+      _destinoActivoId = _secciones.first['id'];
+      _destinoActivoNombre = '${_secciones.first['nombre']} (Seccion)';
+    } else if (_partidas.isNotEmpty) {
+      _destinoActivoId = _partidas.first['id'];
+      _destinoActivoNombre = 'Partida 1: ${_partidas.first['nombre']}';
+    }
+  }
+
+  // ═══════════ AUTOGUARDADO ═══════════
+
+  void _iniciarAutoguardado() {
+    _autoguardadoTimer = Timer.periodic(
+        const Duration(seconds: 20), (_) => _guardarBorradorSilencioso());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _guardarBorradorSilencioso();
+    }
+  }
+
+  bool _hayContenidoParaGuardar() {
+    return _referenciaCtrl.text.trim().isNotEmpty ||
+        _clienteCtrl.text.trim().isNotEmpty ||
+        _fotos.isNotEmpty ||
+        _secciones.isNotEmpty ||
+        _partidas.isNotEmpty;
+  }
+
+  Map<String, dynamic> _construirDatosBorrador() {
+    return {
+      'referencia': _referenciaCtrl.text.trim(),
+      'cliente': _clienteCtrl.text.trim(),
+      'almacen': _almacenCtrl.text.trim(),
+      'house': _houseCtrl.text.trim(),
+      'observaciones': _observacionesCtrl.text.trim(),
+      'tipoBulto': _tiposBultoSeleccionados.join(', '),
+      'tiposBulto': _tiposBultoSeleccionados,
+      'vieneConFactura': _vieneConFactura,
+      'fotos': _fotos.map((f) => (f['file'] as File).path).toList(),
+      'fotosBytes': _fotos.map((f) => String.fromCharCodes(f['bytes'] as Uint8List)).toList(),
+      'fotosTipos': _fotos.map((f) => f['tipo'] as String).toList(),
+      'fotosDescripciones': _fotos.map((f) => (f['descripcion'] as String?) ?? '').toList(),
+      'fotosBloques': _fotos.map((f) => (f['bloqueId'] as String?) ?? '').toList(),
+      'secciones': _secciones,
+      'partidas': _partidas,
+      'particiones': _partidas,
+      'destinoActivoId': _destinoActivoId,
+      'destinoActivoNombre': _destinoActivoNombre,
+      'boxKeyEditar': widget.boxKeyEditar,
+      'guardadoEn': DateTime.now().toIso8601String(),
+    };
+  }
+
+  Future<void> _guardarBorradorSilencioso() async {
+    if (_guardadoConExito) return;
+    if (!_hayContenidoParaGuardar()) return;
+    try {
+      final box = Hive.isBoxOpen(_kBorradorBoxName)
+          ? Hive.box(_kBorradorBoxName)
+          : await Hive.openBox(_kBorradorBoxName);
+      await box.put(_kBorradorKey, _construirDatosBorrador());
+    } catch (_) {
+      // El autoguardado nunca debe interrumpir al usuario si falla.
+    }
+  }
+
+  Future<void> _revisarBorradorPendiente() async {
+    if (_yaRevisoBorrador) return;
+    _yaRevisoBorrador = true;
+    try {
+      final box = Hive.isBoxOpen(_kBorradorBoxName)
+          ? Hive.box(_kBorradorBoxName)
+          : await Hive.openBox(_kBorradorBoxName);
+      final raw = box.get(_kBorradorKey);
+      if (raw == null || !mounted) return;
+      final draft = Map<String, dynamic>.from(raw as Map);
+
+      final referencia = (draft['referencia'] ?? '').toString();
+      final cliente = (draft['cliente'] ?? '').toString();
+      final fotosCount = List.from(draft['fotos'] ?? []).length;
+      final tieneAlgo = referencia.isNotEmpty || cliente.isNotEmpty || fotosCount > 0;
+      if (!tieneAlgo) {
+        await box.delete(_kBorradorKey);
+        return;
+      }
+
+      final detalle = [
+        if (referencia.isNotEmpty) referencia,
+        if (cliente.isNotEmpty) cliente,
+        if (fotosCount > 0) '$fotosCount foto${fotosCount != 1 ? 's' : ''}',
+      ].join(' · ');
+
+      final continuar = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Previo sin guardar'),
+          content: Text(
+            'Encontramos un previo que no se guardo (por ejemplo, por una '
+            'llamada o al cerrar la app sin querer)${detalle.isNotEmpty ? ':\n\n$detalle' : '.'}'
+            '\n\n¿Deseas continuar donde te quedaste?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Descartar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2596BE)),
+              child: const Text('Continuar', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+
+      if (continuar == true) {
+        setState(() => _poblarDesdeMapa(draft));
+      } else {
+        await box.delete(_kBorradorKey);
+      }
+    } catch (_) {
+      // Si algo falla al revisar el borrador, simplemente continuamos
+      // con un formulario en blanco en vez de bloquear al usuario.
+    }
+  }
+
+  Future<void> _borrarBorrador() async {
+    try {
+      final box = Hive.isBoxOpen(_kBorradorBoxName)
+          ? Hive.box(_kBorradorBoxName)
+          : await Hive.openBox(_kBorradorBoxName);
+      await box.delete(_kBorradorKey);
+    } catch (_) {}
   }
 
   String _getNombreDestino(String id) {
@@ -142,6 +299,11 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoguardadoTimer?.cancel();
+    // Ultimo intento de no perder informacion si el usuario sale de la
+    // pantalla sin haber guardado el previo definitivamente.
+    _guardarBorradorSilencioso();
     _referenciaCtrl.dispose();
     _clienteCtrl.dispose();
     _almacenCtrl.dispose();
@@ -214,6 +376,39 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
     }
   }
 
+  Future<void> _eliminarSeccion(int index) async {
+    final s = _secciones[index];
+    final id = s['id'];
+    final cantFotos = _fotos.where((f) => f['bloqueId'] == id).length;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar Seccion'),
+        content: Text(cantFotos > 0
+            ? '¿Eliminar "${s['nombre']}"? Esta seccion tiene $cantFotos foto${cantFotos != 1 ? 's' : ''} asociada${cantFotos != 1 ? 's' : ''}, que tambien se eliminaran.'
+            : '¿Eliminar la seccion "${s['nombre']}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmar == true) {
+      setState(() {
+        _fotos.removeWhere((f) => f['bloqueId'] == id);
+        _secciones.removeAt(index);
+        if (_destinoActivoId == id) {
+          _destinoActivoId = null;
+          _destinoActivoNombre = null;
+        }
+      });
+    }
+  }
+
   Future<void> _nuevaPartida() async {
     final nombreCtrl = TextEditingController();
     final infoCtrl = TextEditingController();
@@ -238,6 +433,39 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
       setState(() {
         _partidas[index]['nombre'] = result['nombre']!;
         _partidas[index]['informacion'] = result['informacion']!;
+      });
+    }
+  }
+
+  Future<void> _eliminarPartida(int index) async {
+    final p = _partidas[index];
+    final id = p['id'];
+    final cantFotos = _fotos.where((f) => f['bloqueId'] == id).length;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar Partida'),
+        content: Text(cantFotos > 0
+            ? '¿Eliminar "Partida ${index + 1}: ${p['nombre']}"? Esta partida tiene $cantFotos foto${cantFotos != 1 ? 's' : ''} asociada${cantFotos != 1 ? 's' : ''}, que tambien se eliminaran.'
+            : '¿Eliminar "Partida ${index + 1}: ${p['nombre']}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmar == true) {
+      setState(() {
+        _fotos.removeWhere((f) => f['bloqueId'] == id);
+        _partidas.removeAt(index);
+        if (_destinoActivoId == id) {
+          _destinoActivoId = null;
+          _destinoActivoNombre = null;
+        }
       });
     }
   }
@@ -337,6 +565,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
       };
 
       await box.put(id, data);
+      _guardadoConExito = true;
+      await _borrarBorrador();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(widget.previoEditar != null ? 'Previo actualizado' : 'Previo guardado'),
@@ -524,6 +754,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                 _agregarFotos();
               },
               onEditar: () => _editarSeccion(e.key),
+              onEliminar: () => _eliminarSeccion(e.key),
             )),
           const SizedBox(height: 16),
 
@@ -559,6 +790,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                 _agregarFotos();
               },
               onEditar: () => _editarPartida(e.key),
+              onEliminar: () => _eliminarPartida(e.key),
             )),
           const Divider(),
           const SizedBox(height: 12),
@@ -692,6 +924,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
     required VoidCallback onSeleccionar,
     required VoidCallback onFotos,
     required VoidCallback onEditar,
+    required VoidCallback onEliminar,
   }) {
     return GestureDetector(
       onTap: onSeleccionar,
@@ -725,6 +958,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> {
                 icon: Icon(Icons.add_a_photo, size: 18, color: color)),
             IconButton(tooltip: 'Editar', visualDensity: VisualDensity.compact, onPressed: onEditar,
                 icon: Icon(Icons.edit, size: 16, color: Colors.grey)),
+            IconButton(tooltip: 'Eliminar', visualDensity: VisualDensity.compact, onPressed: onEliminar,
+                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red)),
           ]),
         ]),
       ),
