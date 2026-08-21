@@ -25,13 +25,13 @@ class SeccionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          Icon(icono, color: const Color(0xFF003087), size: 20),
+          Icon(icono, color: const Color(0xFF2596BE), size: 20),
           const SizedBox(width: 8),
           Text(titulo,
               style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF003087))),
+                  color: Color(0xFF2596BE))),
           const SizedBox(width: 10),
           Expanded(
             child: Container(
@@ -39,8 +39,8 @@ class SeccionHeader extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    const Color(0xFF003087).withOpacity(0.6),
-                    const Color(0xFF003087).withOpacity(0.04),
+                    const Color(0xFF2596BE).withOpacity(0.6),
+                    const Color(0xFF2596BE).withOpacity(0.04),
                   ],
                 ),
               ),
