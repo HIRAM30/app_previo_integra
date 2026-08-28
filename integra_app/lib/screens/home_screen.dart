@@ -12,10 +12,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'package:file_picker/file_picker.dart';
+
 import '../models/reporte.dart';
 import '../services/pdf_service_reporte.dart';
 import '../services/pdf_service_previo.dart';
 import '../services/export_service.dart';
+import '../services/migration_service.dart';
 import 'nuevo_previo_screen.dart';
 import 'previo_detalle_screen.dart';
 import 'nuevo_reporte_screen.dart';
@@ -88,6 +91,11 @@ class _HomeScreenState extends State<HomeScreen>
           automaticallyImplyLeading: false,
           actions: [
             IconButton(
+              icon: const Icon(Icons.file_download_outlined),
+              tooltip: 'Importar previo',
+              onPressed: _importarPrevio,
+            ),
+            IconButton(
               icon: const Icon(Icons.info_outline),
               tooltip: 'Acerca de',
               onPressed: _mostrarAcercaDe,
@@ -133,6 +141,48 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
+  }
+
+  // ── Importar un previo migrado desde otro dispositivo ─────
+  Future<void> _importarPrevio() async {
+    try {
+      final resultado = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        withData: false,
+      );
+      if (resultado == null || resultado.files.single.path == null) return;
+
+      final path = resultado.files.single.path!;
+      if (!path.toLowerCase().endsWith('.previomig')) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Selecciona un archivo .previomig generado desde "Exportar para migrar".'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      final referencia = await MigrationService.importarPrevio(File(path));
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Previo "$referencia" importado correctamente.'),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al importar: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _mostrarAcercaDe() {
