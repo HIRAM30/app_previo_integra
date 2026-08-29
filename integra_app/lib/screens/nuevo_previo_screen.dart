@@ -14,6 +14,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../utils/image_helper.dart';
 import '../widgets/seccion_header.dart';
+import '../services/usuario_service.dart';
 
 const String _kBorradorBoxName = 'previos_borrador';
 const String _kBorradorKey = 'actual';
@@ -553,6 +554,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> with WidgetsBindi
         'tipoBulto': _tiposBultoSeleccionados.join(', '),
         'tiposBulto': _tiposBultoSeleccionados,
         'vieneConFactura': _vieneConFactura,
+        'iniciadoPor': widget.previoEditar?['iniciadoPor'] ?? UsuarioService.obtenerNombre() ?? 'Desconocido',
         'fotos': _fotos.map((f) => (f['file'] as File).path).toList(),
         'fotosBytes': _fotos.map((f) => String.fromCharCodes(f['bytes'] as Uint8List)).toList(),
         'fotosTipos': _fotos.map((f) => f['tipo'] as String).toList(),
@@ -838,7 +840,8 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> with WidgetsBindi
                 return Padding(
                   key: ValueKey('foto_$index'),
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: Card(
+                  child: RepaintBoundary(
+                    child: Card(
                     elevation: 2,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10),
                         side: BorderSide(color: color, width: 2)),
@@ -855,7 +858,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> with WidgetsBindi
                         onTap: () => _editarDescripcion(index),
                         child: ClipRRect(
                           child: Image.memory(f['bytes'] as Uint8List, width: 90, height: 100,
-                              fit: BoxFit.cover, cacheWidth: 180),
+                              fit: BoxFit.cover, cacheWidth: 180, cacheHeight: 200),
                         ),
                       ),
                       Expanded(
@@ -892,6 +895,7 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> with WidgetsBindi
                       IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
                           onPressed: () => _removePhoto(index)),
                     ]),
+                    ),
                   ),
                 );
               },

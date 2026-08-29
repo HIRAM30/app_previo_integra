@@ -8,6 +8,8 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'home_screen.dart';
+import 'nombre_usuario_screen.dart';
+import '../services/usuario_service.dart';
 import '../main.dart' show kVersionApp;
 
 class SplashScreen extends StatefulWidget {
@@ -48,12 +50,16 @@ class _SplashScreenState extends State<SplashScreen>
       Hive.openBox('previos'),
       Hive.openBox('reportes'),
       Hive.openBox('previos_borrador'),
+      Hive.openBox('config'),
     ]);
     await Future.delayed(const Duration(milliseconds: 1600));
     if (mounted) {
+      final tieneNombre = UsuarioService.tieneNombre;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (_) => tieneNombre ? const HomeScreen() : const NombreUsuarioScreen(),
+        ),
       );
     }
   }

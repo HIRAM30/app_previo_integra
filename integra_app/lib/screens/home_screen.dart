@@ -12,13 +12,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import 'package:file_picker/file_picker.dart';
-
 import '../models/reporte.dart';
 import '../services/pdf_service_reporte.dart';
 import '../services/pdf_service_previo.dart';
 import '../services/export_service.dart';
-import '../services/migration_service.dart';
+import '../services/export_service_previo.dart';
 import 'nuevo_previo_screen.dart';
 import 'previo_detalle_screen.dart';
 import 'nuevo_reporte_screen.dart';
@@ -91,11 +89,6 @@ class _HomeScreenState extends State<HomeScreen>
           automaticallyImplyLeading: false,
           actions: [
             IconButton(
-              icon: const Icon(Icons.file_download_outlined),
-              tooltip: 'Importar previo',
-              onPressed: _importarPrevio,
-            ),
-            IconButton(
               icon: const Icon(Icons.info_outline),
               tooltip: 'Acerca de',
               onPressed: _mostrarAcercaDe,
@@ -141,48 +134,6 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
-  }
-
-  // ── Importar un previo migrado desde otro dispositivo ─────
-  Future<void> _importarPrevio() async {
-    try {
-      final resultado = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-        withData: false,
-      );
-      if (resultado == null || resultado.files.single.path == null) return;
-
-      final path = resultado.files.single.path!;
-      if (!path.toLowerCase().endsWith('.previomig')) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Selecciona un archivo .previomig generado desde "Exportar para migrar".'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
-      final referencia = await MigrationService.importarPrevio(File(path));
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Previo "$referencia" importado correctamente.'),
-          backgroundColor: Colors.green.shade700,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al importar: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 
   void _mostrarAcercaDe() {
@@ -235,26 +186,43 @@ class _PreviosTab extends StatelessWidget {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-        child: ElevatedButton(
-          onPressed: () => Navigator.push(context,
-              MaterialPageRoute(
-                  builder: (_) => const NuevoPrevioScreen())),
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 56),
-            backgroundColor: const Color(0xFF003087),
+        child: Row(children: [
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(
+                      builder: (_) => const NuevoPrevioScreen())),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 56),
+                backgroundColor: const Color(0xFF003087),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add_circle_outline,
+                      size: 24, color: Colors.white),
+                  SizedBox(width: 10),
+                  Text('Nuevo Previo',
+                      style: TextStyle(
+                          fontSize: 18, color: Colors.white)),
+                ],
+              ),
+            ),
           ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.add_circle_outline,
-                  size: 24, color: Colors.white),
-              SizedBox(width: 10),
-              Text('Nuevo Previo',
-                  style: TextStyle(
-                      fontSize: 18, color: Colors.white)),
-            ],
+          const SizedBox(width: 8),
+          Material(
+            color: Colors.green.shade700,
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _importar(context),
+              child: const SizedBox(
+                width: 56, height: 56,
+                child: Icon(Icons.file_download_outlined, color: Colors.white),
+              ),
+            ),
           ),
-        ),
+        ]),
       ),
       _Buscador(
         ctrl: searchCtrl,
@@ -298,6 +266,40 @@ class _PreviosTab extends StatelessWidget {
       return (d['house']      ?? '').toString().toUpperCase().contains(q) ||
              (d['referencia'] ?? '').toString().toUpperCase().contains(q);
     }).toList();
+  }
+
+  Future<void> _importar(BuildContext context) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              CircularProgressIndicator(color: Colors.green),
+              SizedBox(height: 12),
+              Text('Importando Previo...'),
+            ]),
+          ),
+        ),
+      ),
+    );
+    String? nuevoId;
+    try {
+      nuevoId = await ExportServicePrevio.importarPrevio(context);
+    } finally {
+      if (context.mounted) Navigator.pop(context);
+    }
+    if (nuevoId != null && context.mounted) {
+      final data = Hive.box('previos').get(nuevoId) as Map;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PrevioDetalleScreen(previo: data, boxKey: nuevoId),
+        ),
+      );
+    }
   }
 }
 
@@ -488,6 +490,13 @@ class _PrevioCard extends StatelessWidget {
               tooltip: 'PDF del Previo',
               onPressed: () => _pdfPrevio(context, data),
             ),
+            // Exportar .integra (compartir/continuar en otro telefono)
+            IconButton(
+              icon: const Icon(Icons.ios_share,
+                  color: Colors.green, size: 24),
+              tooltip: 'Exportar / Compartir Previo',
+              onPressed: () => _exportar(context, data),
+            ),
             // Ver detalle
             IconButton(
               icon: const Icon(Icons.remove_red_eye,
@@ -528,6 +537,30 @@ class _PrevioCard extends StatelessWidget {
     );
     try {
       await PdfServicePrevio.generarYCompartir(data, context);
+    } finally {
+      if (context.mounted) Navigator.pop(context);
+    }
+  }
+
+  Future<void> _exportar(BuildContext context, Map data) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              CircularProgressIndicator(color: Colors.green),
+              SizedBox(height: 12),
+              Text('Preparando archivo .integra...'),
+            ]),
+          ),
+        ),
+      ),
+    );
+    try {
+      await ExportServicePrevio.exportarPrevio(data, context);
     } finally {
       if (context.mounted) Navigator.pop(context);
     }

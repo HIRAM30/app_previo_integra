@@ -1,8 +1,8 @@
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// screens/previo_detalle_screen.dart v4.1
-// Diseño mejorado: tarjetas, mejor organización visual
+// screens/previo_detalle_screen.dart v5.0
+// Fotos agrupadas por Seccion/Partida + filtro de busqueda
 // ============================================================
 
 import 'dart:io';
@@ -10,11 +10,11 @@ import 'package:flutter/material.dart';
 
 import '../models/reporte.dart';
 import '../services/pdf_service_previo.dart';
-import '../services/migration_service.dart';
+import '../services/export_service_previo.dart';
 import 'nuevo_previo_screen.dart';
 import 'nuevo_reporte_screen.dart';
 
-class PrevioDetalleScreen extends StatelessWidget {
+class PrevioDetalleScreen extends StatefulWidget {
   final Map previo;
   final dynamic boxKey;
 
@@ -24,33 +24,163 @@ class PrevioDetalleScreen extends StatelessWidget {
     required this.boxKey,
   });
 
+  @override
+  State<PrevioDetalleScreen> createState() => _PrevioDetalleScreenState();
+}
+
+/// Representa un grupo de fotos: una Seccion, una Partida, o el grupo
+/// especial "Sin partida asignada" para fotos sin bloque asociado.
+class _GrupoFotos {
+  final String id;
+  final String tipoEtiqueta; // 'Seccion', 'Partida N', o ''
+  final String nombre;
+  final int? numero; // numero de partida, para poder filtrar por numero
+  final List<Map<String, String>> fotos;
+
+  _GrupoFotos({
+    required this.id,
+    required this.tipoEtiqueta,
+    required this.nombre,
+    required this.fotos,
+    this.numero,
+  });
+}
+
+class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
+  final _buscarCtrl = TextEditingController();
+  String _busqueda = '';
+  late final List<_GrupoFotos> _todosLosGrupos;
+  final Set<String> _gruposExpandidos = {};
+
+  static const int _fotosVisiblesPorDefecto = 9;
+
+  @override
+  void initState() {
+    super.initState();
+    // Se calcula una sola vez: evita reprocesar/reordenar las fotos en
+    // cada letra que el usuario escribe en el buscador (mas fluido en
+    // telefonos de gama baja).
+    _todosLosGrupos = _construirGrupos();
+    _buscarCtrl.addListener(() {
+      setState(() => _busqueda = _buscarCtrl.text.trim().toLowerCase());
+    });
+  }
+
+  @override
+  void dispose() {
+    _buscarCtrl.dispose();
+    super.dispose();
+  }
+
+  Map get previo => widget.previo;
+  dynamic get boxKey => widget.boxKey;
+
   Color _colorTipo(String tipo) {
     if (tipo == 'Averia') return Colors.red.shade700;
     if (tipo == 'Mercancia') return const Color(0xFF2596BE);
     return Colors.orange.shade700;
   }
 
-  @override
-  Widget build(BuildContext context) {
+  /// Construye los grupos de fotos: uno por cada Seccion, uno por cada
+  /// Partida (con su numero), y un grupo final con las fotos que no
+  /// quedaron asociadas a ningun bloque.
+  List<_GrupoFotos> _construirGrupos() {
     final fotos = List<String>.from(previo['fotos'] ?? []);
     final tipos = List<String>.from(previo['fotosTipos'] ?? []);
     final fotosBytes = List<String>.from(previo['fotosBytes'] ?? []);
     final fotosBloques = List<String>.from(previo['fotosBloques'] ?? []);
 
-    final indexados = List.generate(fotos.length,
-        (i) => {
-              'path': fotos[i],
-              'tipo': i < tipos.length ? tipos[i] : 'Foto',
-              'bytes': i < fotosBytes.length ? fotosBytes[i] : '',
-            });
-    final docs = indexados
-        .where((f) => f['tipo'] != 'Mercancia' && f['tipo'] != 'Averia')
+    final indexados = List.generate(fotos.length, (i) {
+      final path = fotos[i];
+      final tipo = i < tipos.length ? tipos[i] : 'Foto';
+      final bytes = i < fotosBytes.length ? fotosBytes[i] : '';
+      final bloqueId = i < fotosBloques.length ? fotosBloques[i] : '';
+      return {
+        'path': path,
+        'tipo': tipo,
+        'bytes': bytes,
+        'bloqueId': bloqueId,
+      };
+    });
+
+    // Orden dentro de cada grupo: documentos, averias, mercancia.
+    void ordenarGrupo(List<Map<String, String>> l) {
+      final docs = l.where((f) => f['tipo'] != 'Mercancia' && f['tipo'] != 'Averia').toList();
+      final avs = l.where((f) => f['tipo'] == 'Averia').toList();
+      final mercs = l.where((f) => f['tipo'] == 'Mercancia').toList();
+      l..clear()..addAll([...docs, ...avs, ...mercs]);
+    }
+
+    final secciones = List.from(previo['secciones'] ?? []);
+    final partidas = List.from(previo['partidas'] ?? previo['particiones'] ?? []);
+
+    final grupos = <_GrupoFotos>[];
+
+    for (final raw in secciones) {
+      final s = Map<String, dynamic>.from(raw as Map);
+      final id = (s['id'] ?? '').toString();
+      final fotosGrupo = indexados.where((f) => f['bloqueId'] == id).toList();
+      ordenarGrupo(fotosGrupo);
+      grupos.add(_GrupoFotos(
+        id: id,
+        tipoEtiqueta: 'Seccion',
+        nombre: (s['nombre'] ?? 'Sin nombre').toString(),
+        fotos: fotosGrupo,
+      ));
+    }
+
+    for (int i = 0; i < partidas.length; i++) {
+      final p = Map<String, dynamic>.from(partidas[i] as Map);
+      final id = (p['id'] ?? '').toString();
+      final fotosGrupo = indexados.where((f) => f['bloqueId'] == id).toList();
+      ordenarGrupo(fotosGrupo);
+      grupos.add(_GrupoFotos(
+        id: id,
+        tipoEtiqueta: 'Partida ${i + 1}',
+        numero: i + 1,
+        nombre: (p['nombre'] ?? 'Sin nombre').toString(),
+        fotos: fotosGrupo,
+      ));
+    }
+
+    // Fotos que no pertenecen a ninguna seccion/partida conocida.
+    final idsConocidos = grupos.map((g) => g.id).toSet();
+    final sinAsignar = indexados
+        .where((f) => (f['bloqueId'] ?? '').isEmpty || !idsConocidos.contains(f['bloqueId']))
         .toList();
-    final avs = indexados.where((f) => f['tipo'] == 'Averia').toList();
-    final mercs = indexados.where((f) => f['tipo'] == 'Mercancia').toList();
-    final ordenadas = [...docs, ...avs, ...mercs];
-    final numAverias = avs.length;
-    final bloques = List<Map>.from(previo['bloques'] ?? []);
+    ordenarGrupo(sinAsignar);
+    if (sinAsignar.isNotEmpty) {
+      grupos.add(_GrupoFotos(
+        id: '__sin_asignar__',
+        tipoEtiqueta: '',
+        nombre: 'Sin partida asignada',
+        fotos: sinAsignar,
+      ));
+    }
+
+    return grupos;
+  }
+
+  List<_GrupoFotos> _filtrarGrupos(List<_GrupoFotos> grupos) {
+    if (_busqueda.isEmpty) return grupos;
+    return grupos.where((g) {
+      final nombre = g.nombre.toLowerCase();
+      final etiqueta = g.tipoEtiqueta.toLowerCase();
+      final numeroStr = g.numero?.toString() ?? '';
+      return nombre.contains(_busqueda) ||
+          etiqueta.contains(_busqueda) ||
+          numeroStr == _busqueda ||
+          etiqueta.replaceAll(RegExp(r'[^0-9]'), '') == _busqueda;
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fotos = List<String>.from(previo['fotos'] ?? []);
+    final tipos = List<String>.from(previo['fotosTipos'] ?? []);
+    final numAverias = tipos.where((t) => t == 'Averia').length;
+
+    final gruposVisibles = _filtrarGrupos(_todosLosGrupos);
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -79,11 +209,11 @@ class PrevioDetalleScreen extends StatelessWidget {
             tooltip: 'Generar PDF',
             onPressed: () => _generarPdf(context),
           ),
-          // Migrar a otro dispositivo
+          // Exportar / compartir .integra
           IconButton(
-            icon: const Icon(Icons.send_to_mobile, color: Colors.white),
-            tooltip: 'Exportar para migrar',
-            onPressed: () => MigrationService.exportarPrevio(previo, context),
+            icon: const Icon(Icons.ios_share, color: Colors.white),
+            tooltip: 'Exportar / Compartir Previo',
+            onPressed: () => ExportServicePrevio.exportarPrevio(previo, context),
           ),
         ],
       ),
@@ -143,57 +273,6 @@ class PrevioDetalleScreen extends StatelessWidget {
             ]),
           ),
 
-          // ═══════════ RESUMEN RÁPIDO DE PARTIDAS ═══════════
-          if (bloques.isNotEmpty) ...[
-            _seccion('Resumen de Partidas', Icons.summarize),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 80,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: bloques.length,
-                itemBuilder: (_, i) {
-                  final b = bloques[i];
-                  final bloqueId = (b['id'] ?? '').toString();
-                  final cantFotosBloque = fotosBloques.where((id) => id == bloqueId).length;
-                  return Container(
-                    width: 140,
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFF2596BE).withValues(alpha: 0.3)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Partida ${i + 1}',
-                            style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                        const SizedBox(height: 2),
-                        Text(b['nombre'] ?? 'Sin nombre',
-                            style: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2596BE)),
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const Spacer(),
-                        Text('$cantFotosBloque foto${cantFotosBloque != 1 ? 's' : ''}',
-                            style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-
           // ═══════════ DATOS DEL EMBARQUE ═══════════
           _seccion('Datos del Embarque', Icons.local_shipping),
           const SizedBox(height: 8),
@@ -203,6 +282,7 @@ class PrevioDetalleScreen extends StatelessWidget {
             _infoItem(Icons.warehouse, 'Almacen', previo['almacen']),
             _infoItem(Icons.numbers, 'House', previo['house']),
             _infoItem(Icons.calendar_today, 'Fecha', previo['fecha']?.substring(0, 10)),
+            _infoItem(Icons.person_pin_circle_outlined, 'Iniciado por', previo['iniciadoPor']),
             if ((previo['observaciones'] ?? '').isNotEmpty)
               _infoItem(Icons.notes, 'Observaciones', previo['observaciones']),
           ]),
@@ -233,9 +313,15 @@ class PrevioDetalleScreen extends StatelessWidget {
             const SizedBox(height: 16),
           ],
 
-          // ═══════════ FOTOGRAFÍAS ═══════════
+          // ═══════════ FOTOGRAFÍAS POR SECCIÓN / PARTIDA ═══════════
           _seccion('Fotografias (${fotos.length})', Icons.photo_camera),
           const SizedBox(height: 8),
+
+          if (_todosLosGrupos.isNotEmpty) ...[
+            _buscadorPartidas(),
+            const SizedBox(height: 12),
+          ],
+
           if (fotos.isEmpty)
             Container(
               padding: const EdgeInsets.all(30),
@@ -249,109 +335,24 @@ class PrevioDetalleScreen extends StatelessWidget {
                 Text('No hay fotografias', style: TextStyle(color: Colors.grey.shade500)),
               ]),
             )
-          else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 0.85,
+          else if (gruposVisibles.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(30),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
               ),
-              itemCount: ordenadas.length,
-              itemBuilder: (context, i) {
-                final f = ordenadas[i];
-                final path = f['path']!;
-                final tipo = f['tipo']!;
-                final color = _colorTipo(tipo);
+              child: Column(children: [
+                Icon(Icons.search_off, size: 48, color: Colors.grey.shade300),
+                const SizedBox(height: 8),
+                Text('No se encontraron secciones o partidas para "${_buscarCtrl.text}"',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade500)),
+              ]),
+            )
+          else
+            ...gruposVisibles.map((g) => _buildGrupoCard(context, g)),
 
-                return GestureDetector(
-                  onTap: () => _verFoto(context, path, tipo),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          if (File(path).existsSync())
-                            Image.file(
-                              File(path),
-                              fit: BoxFit.cover,
-                              cacheHeight: 300,
-                              cacheWidth: 300,
-                            )
-                          else
-                            Container(
-                              color: Colors.grey.shade200,
-                              child: const Icon(Icons.broken_image, color: Colors.grey, size: 40),
-                            ),
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            height: 50,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.bottomCenter,
-                                  end: Alignment.topCenter,
-                                  colors: [
-                                    Colors.black.withValues(alpha: 0.7),
-                                    Colors.transparent,
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: color,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                tipo,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 8,
-                            left: 8,
-                            child: Text(
-                              '${i + 1}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
           const SizedBox(height: 20),
         ],
       ),
@@ -359,6 +360,214 @@ class PrevioDetalleScreen extends StatelessWidget {
   }
 
   // ═══════════ WIDGETS AUXILIARES ═══════════
+
+  Widget _buscadorPartidas() {
+    return TextField(
+      controller: _buscarCtrl,
+      decoration: InputDecoration(
+        hintText: 'Buscar por titulo o numero de partida...',
+        prefixIcon: const Icon(Icons.search, size: 20),
+        suffixIcon: _busqueda.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear, size: 18),
+                onPressed: () => _buscarCtrl.clear(),
+              )
+            : null,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF2596BE), width: 1.5),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGrupoCard(BuildContext context, _GrupoFotos g) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF2596BE).withValues(alpha: 0.15)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            if (g.tipoEtiqueta.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2596BE).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(g.tipoEtiqueta,
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2596BE))),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text('General',
+                    style: TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+              ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(g.nombre,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            Text('${g.fotos.length} foto${g.fotos.length != 1 ? 's' : ''}',
+                style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          ]),
+          const SizedBox(height: 10),
+          if (g.fotos.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text('Sin fotos en esta seccion/partida',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            )
+          else
+            Builder(builder: (context) {
+              final expandido = _gruposExpandidos.contains(g.id);
+              final excedeLimite = g.fotos.length > _fotosVisiblesPorDefecto;
+              final fotosAMostrar = (!expandido && excedeLimite)
+                  ? g.fotos.take(_fotosVisiblesPorDefecto).toList()
+                  : g.fotos;
+              return Column(children: [
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    childAspectRatio: 0.85,
+                  ),
+                  itemCount: fotosAMostrar.length,
+                  itemBuilder: (context, i) {
+                    final f = fotosAMostrar[i];
+                    final path = f['path']!;
+                    final tipo = f['tipo']!;
+                    final color = _colorTipo(tipo);
+
+                    return RepaintBoundary(
+                      child: GestureDetector(
+                        onTap: () => _verFoto(context, path, tipo),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                if (File(path).existsSync())
+                                  Image.file(
+                                    File(path),
+                                    fit: BoxFit.cover,
+                                    cacheHeight: 220,
+                                    cacheWidth: 220,
+                                  )
+                                else
+                                  Container(
+                                    color: Colors.grey.shade200,
+                                    child: const Icon(Icons.broken_image, color: Colors.grey, size: 30),
+                                  ),
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: color,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      tipo,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 4,
+                                  left: 4,
+                                  child: Text(
+                                    '${i + 1}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      shadows: [Shadow(blurRadius: 3, color: Colors.black)],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                if (excedeLimite)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: TextButton.icon(
+                      onPressed: () => setState(() {
+                        if (expandido) {
+                          _gruposExpandidos.remove(g.id);
+                        } else {
+                          _gruposExpandidos.add(g.id);
+                        }
+                      }),
+                      icon: Icon(expandido ? Icons.expand_less : Icons.expand_more, size: 18),
+                      label: Text(expandido
+                          ? 'Mostrar menos'
+                          : 'Ver todas (${g.fotos.length} fotos)'),
+                    ),
+                  ),
+              ]);
+            }),
+        ],
+      ),
+    );
+  }
 
   Widget _buildInfoCard(BuildContext context, List<Widget> items) {
     return Container(
