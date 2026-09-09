@@ -644,12 +644,11 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> with WidgetsBindi
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const SeccionHeader(titulo: 'Datos del Embarque', icono: Icons.local_shipping),
-          _campo(_referenciaCtrl, 'Master / Referencia / Pedimento *', Icons.tag,
-              hint: 'Numero de guia master o pedimento', mayusc: true),
-          _campo(_clienteCtrl, 'Cliente *', Icons.business, hint: 'Nombre del dueno de la carga'),
-          _campo(_almacenCtrl, 'Almacen', Icons.warehouse, hint: 'Nombre o numero del almacen'),
-          _campo(_houseCtrl, 'Numero House Completo', Icons.numbers, hint: 'Ej: CDGO633069-8', mayusc: true),
+          const SeccionHeader(titulo: 'DATOS', icono: Icons.local_shipping),
+          _campo(_referenciaCtrl, 'Master', Icons.tag, hint: 'Numero de guia master o', mayusc: true),
+          _campo(_houseCtrl, 'House', Icons.numbers, hint: 'Numero de la guia house', mayusc: true),
+          _campo(_clienteCtrl, 'Cliente', Icons.business, hint: 'Nombre de empresa o cliente'),
+          _campo(_almacenCtrl, 'Almacen', Icons.warehouse, hint: 'Nombre del almacen'),
 
           // ═══════════ TIPO DE BULTO (MULTISELECCIÓN) ═══════════
           const SizedBox(height: 14),
@@ -675,7 +674,18 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> with WidgetsBindi
             ),
           ),
 
-          // ═══════════ ¿VIENE CON FACTURA? ═══════════
+          Padding(
+            padding: const EdgeInsets.only(top: 14, bottom: 14),
+            child: TextField(
+              controller: _observacionesCtrl, maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Observaciones', hintText: 'Notas adicionales',
+                  border: OutlineInputBorder(), prefixIcon: Icon(Icons.notes)),
+            ),
+          ),
+          const Divider(),
+          const SizedBox(height: 12),
+
+                   // ═══════════ ¿VIENE CON FACTURA? ═══════════
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(12),
@@ -714,22 +724,11 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen> with WidgetsBindi
             ]),
           ),
 
-          Padding(
-            padding: const EdgeInsets.only(top: 14, bottom: 14),
-            child: TextField(
-              controller: _observacionesCtrl, maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Observaciones', hintText: 'Notas adicionales...',
-                  border: OutlineInputBorder(), prefixIcon: Icon(Icons.notes)),
-            ),
-          ),
-          const Divider(),
-          const SizedBox(height: 12),
-
           // ═══════════ SECCIONES ═══════════
           Row(children: [
             const Icon(Icons.folder_outlined, color: Colors.orange, size: 22),
             const SizedBox(width: 8),
-            const Expanded(child: Text('Secciones',
+            const Expanded(child: Text('Secciones (Guia, Factura, Bulto)',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.orange))),
             IconButton(onPressed: _nuevaSeccion, icon: const Icon(Icons.add_circle, color: Colors.orange, size: 28)),
           ]),

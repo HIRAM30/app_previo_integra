@@ -88,11 +88,11 @@ class _HomeScreenState extends State<HomeScreen>
           title: const Text('Integra Del Centro'),
           automaticallyImplyLeading: false,
           actions: [
-            IconButton(
-              icon: const Icon(Icons.info_outline),
-              tooltip: 'Acerca de',
-              onPressed: _mostrarAcercaDe,
-            ),
+            // IconButton(
+             // icon: const Icon(Icons.info_outline),
+             // tooltip: 'Acerca de',
+             // onPressed: _mostrarAcercaDe,
+          // ),
           ],
           bottom: TabBar(
             controller: _tabController,
