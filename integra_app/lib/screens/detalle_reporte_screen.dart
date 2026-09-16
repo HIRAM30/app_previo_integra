@@ -5,7 +5,11 @@
 // Descripción: Vista de solo lectura de un reporte guardado.
 //   Muestra todos los campos, tabla de hallazgos con resaltado
 //   de discrepancias, galería de fotos y accesos a PDF y
-//   exportar el archivo .integra para la Web App de oficina.
+//   exportar el archivo .integra para compartir/respaldar.
+//
+//   [COMENTADO] Se removió toda referencia a la Web App de
+//   oficina (aún no existe). El botón de exportar .integra
+//   se mantiene con textos genéricos.
 // ============================================================
 
 import 'dart:io';
@@ -51,10 +55,10 @@ class _DetalleReporteScreenState extends State<DetalleReporteScreen> {
               : 'Detalle del Reporte',
         ),
         actions: [
-          // Exportar para Web App
+          // Exportar .integra (compartir/respaldar)
           IconButton(
             icon: const Icon(Icons.upload_file),
-            tooltip: 'Exportar a Web App',
+            tooltip: 'Compartir .integra',
             onPressed: () => _exportar(),
           ),
           // PDF oficial
@@ -104,11 +108,11 @@ class _DetalleReporteScreenState extends State<DetalleReporteScreen> {
               ),
             ),
 
-          // ── Botón exportar ───────────────────────────────────
+          // ── Botón exportar .integra ──────────────────────────
           OutlinedButton.icon(
             icon: const Icon(Icons.upload_file, color: Colors.green),
             label: const Text(
-              'Exportar a Web App de oficina (.integra)',
+              'Exportar reporte (.integra)',
               style: TextStyle(
                   color: Colors.green, fontWeight: FontWeight.bold),
             ),
@@ -371,7 +375,7 @@ class _DetalleReporteScreenState extends State<DetalleReporteScreen> {
         title: const Row(children: [
           Icon(Icons.upload_file, color: Colors.green),
           SizedBox(width: 8),
-          Text('Exportar a Web App'),
+          Text('Exportar reporte'),
         ]),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -387,8 +391,8 @@ class _DetalleReporteScreenState extends State<DetalleReporteScreen> {
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             const Text(
-              'Envíalo por WhatsApp, correo o USB a la computadora '
-              'y ábrelo en la Web App de oficina.',
+              'Podrás compartirlo por WhatsApp, correo o USB para '
+              'respaldarlo o transferirlo a otro teléfono.',
               style: TextStyle(fontSize: 13, color: Colors.grey),
             ),
           ],
@@ -421,7 +425,7 @@ class _DetalleReporteScreenState extends State<DetalleReporteScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               CircularProgressIndicator(color: Colors.green),
               SizedBox(height: 12),
-              Text('Preparando archivo para Web App...'),
+              Text('Preparando archivo .integra...'),
             ]),
           ),
         ),

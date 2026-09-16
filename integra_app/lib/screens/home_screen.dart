@@ -1,11 +1,13 @@
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// screens/home_screen.dart v3.1
+// screens/home_screen.dart v3.2
 // Mejoras:
 //   - PopScope: pregunta confirmación al presionar atrás
 //   - Botón Editar (ícono naranja) en cada tarjeta de previo
 //   - Botón Editar en cada tarjeta de reporte
+//   - [COMENTADO] Banner de Web App de oficina (aún no existe)
+//   - Tooltip de reporte cambiado a "Compartir .integra"
 // ============================================================
 
 import 'dart:io';
@@ -345,29 +347,35 @@ class _ReportesTab extends StatelessWidget {
           ),
         ),
       ),
-      Container(
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        padding: const EdgeInsets.symmetric(
-            horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.blue.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.blue.shade200),
-        ),
-        child: Row(children: [
-          Icon(Icons.computer,
-              size: 18, color: Colors.blue.shade700),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Exporta el reporte como .integra para editarlo '
-              'en la Web App de oficina.',
-              style: TextStyle(
-                  fontSize: 12, color: Colors.blue.shade800),
-            ),
-          ),
-        ]),
-      ),
+
+      // ═══════════════════════════════════════════════════════════
+      // [COMENTADO] Banner informativo sobre la Web App de oficina.
+      // Se reactivará cuando la Web App exista.
+      // ═══════════════════════════════════════════════════════════
+      // Container(
+      //   margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      //   padding: const EdgeInsets.symmetric(
+      //       horizontal: 12, vertical: 8),
+      //   decoration: BoxDecoration(
+      //     color: Colors.blue.shade50,
+      //     borderRadius: BorderRadius.circular(8),
+      //     border: Border.all(color: Colors.blue.shade200),
+      //   ),
+      //   child: Row(children: [
+      //     Icon(Icons.computer,
+      //         size: 18, color: Colors.blue.shade700),
+      //     const SizedBox(width: 8),
+      //     Expanded(
+      //       child: Text(
+      //         'Exporta el reporte como .integra para editarlo '
+      //         'en la Web App de oficina.',
+      //         style: TextStyle(
+      //             fontSize: 12, color: Colors.blue.shade800),
+      //       ),
+      //     ),
+      //   ]),
+      // ),
+
       _Buscador(
         ctrl: searchCtrl,
         hint: 'Buscar por referencia o BL...',
@@ -642,11 +650,11 @@ class _ReporteCard extends StatelessWidget {
               tooltip: 'PDF Oficial',
               onPressed: () => _pdfReporte(context, reporte),
             ),
-            // Exportar .integra
+            // Exportar .integra (compartir/respaldar)
             IconButton(
               icon: const Icon(Icons.upload_file,
                   color: Colors.green, size: 24),
-              tooltip: 'Exportar a Web App',
+              tooltip: 'Compartir .integra',
               onPressed: () => _exportar(context, reporte),
             ),
             // Ver detalle
@@ -707,7 +715,7 @@ class _ReporteCard extends StatelessWidget {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               CircularProgressIndicator(color: Colors.green),
               SizedBox(height: 12),
-              Text('Preparando archivo para Web App...'),
+              Text('Preparando archivo .integra...'),
             ]),
           ),
         ),

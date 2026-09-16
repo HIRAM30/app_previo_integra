@@ -1,8 +1,14 @@
 // ============================================================
 // Integra Del Centro, S.C.
 // Desarrollado por: HIRAM JAFET VELAZQUEZ SANTANDER
-// screens/previo_detalle_screen.dart v5.0
-// Fotos agrupadas por Seccion/Partida + filtro de busqueda
+// screens/previo_detalle_screen.dart v6.0
+// Cambios v6.0:
+//   - Ya NO lee fotosBytes de Hive (compatibilidad hacia atras).
+//   - ListView principal reemplazado por CustomScrollView con slivers.
+//   - Grupos se construyen con rutas, no con bytes.
+//   - Migracion automatica: si el previo viejo tiene fotosBytes pero
+//     no encuentra el archivo, lo escribe en disco.
+//   - Thumbnails con cacheWidth/cacheHeight mas agresivo (180px).
 // ============================================================
 
 import 'dart:io';
@@ -28,13 +34,11 @@ class PrevioDetalleScreen extends StatefulWidget {
   State<PrevioDetalleScreen> createState() => _PrevioDetalleScreenState();
 }
 
-/// Representa un grupo de fotos: una Seccion, una Partida, o el grupo
-/// especial "Sin partida asignada" para fotos sin bloque asociado.
 class _GrupoFotos {
   final String id;
-  final String tipoEtiqueta; // 'Seccion', 'Partida N', o ''
+  final String tipoEtiqueta;
   final String nombre;
-  final int? numero; // numero de partida, para poder filtrar por numero
+  final int? numero;
   final List<Map<String, String>> fotos;
 
   _GrupoFotos({
@@ -57,9 +61,6 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
   @override
   void initState() {
     super.initState();
-    // Se calcula una sola vez: evita reprocesar/reordenar las fotos en
-    // cada letra que el usuario escribe en el buscador (mas fluido en
-    // telefonos de gama baja).
     _todosLosGrupos = _construirGrupos();
     _buscarCtrl.addListener(() {
       setState(() => _busqueda = _buscarCtrl.text.trim().toLowerCase());
@@ -81,45 +82,64 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
     return Colors.orange.shade700;
   }
 
-  /// Construye los grupos de fotos: uno por cada Seccion, uno por cada
-  /// Partida (con su numero), y un grupo final con las fotos que no
-  /// quedaron asociadas a ningun bloque.
+  /// Migra fotos viejas: si el archivo no existe pero hay bytes
+  /// en `fotosBytes`, los escribe en disco. Retorna la ruta valida
+  /// o null si no se puede recuperar.
+  String? _resolverRuta(int i, String path, List<String> bytesViejos) {
+    final file = File(path);
+    if (file.existsSync()) return path;
+
+    if (i < bytesViejos.length && bytesViejos[i].isNotEmpty) {
+      try {
+        final bytes = bytesViejos[i].codeUnits;
+        file.writeAsBytesSync(bytes);
+        if (file.existsSync()) return path;
+      } catch (_) {}
+    }
+    return null;
+  }
+
   List<_GrupoFotos> _construirGrupos() {
     final fotos = List<String>.from(previo['fotos'] ?? []);
     final tipos = List<String>.from(previo['fotosTipos'] ?? []);
     final fotosBytes = List<String>.from(previo['fotosBytes'] ?? []);
     final fotosBloques = List<String>.from(previo['fotosBloques'] ?? []);
 
-    final indexados = List.generate(fotos.length, (i) {
-      final path = fotos[i];
+    final indexados = <Map<String, String>>[];
+    for (int i = 0; i < fotos.length; i++) {
+      final ruta = _resolverRuta(i, fotos[i], fotosBytes);
+      if (ruta == null) continue;
       final tipo = i < tipos.length ? tipos[i] : 'Foto';
-      final bytes = i < fotosBytes.length ? fotosBytes[i] : '';
       final bloqueId = i < fotosBloques.length ? fotosBloques[i] : '';
-      return {
-        'path': path,
+      indexados.add({
+        'path': ruta,
         'tipo': tipo,
-        'bytes': bytes,
         'bloqueId': bloqueId,
-      };
-    });
+      });
+    }
 
-    // Orden dentro de cada grupo: documentos, averias, mercancia.
     void ordenarGrupo(List<Map<String, String>> l) {
-      final docs = l.where((f) => f['tipo'] != 'Mercancia' && f['tipo'] != 'Averia').toList();
+      final docs = l
+          .where((f) => f['tipo'] != 'Mercancia' && f['tipo'] != 'Averia')
+          .toList();
       final avs = l.where((f) => f['tipo'] == 'Averia').toList();
       final mercs = l.where((f) => f['tipo'] == 'Mercancia').toList();
-      l..clear()..addAll([...docs, ...avs, ...mercs]);
+      l
+        ..clear()
+        ..addAll([...docs, ...avs, ...mercs]);
     }
 
     final secciones = List.from(previo['secciones'] ?? []);
-    final partidas = List.from(previo['partidas'] ?? previo['particiones'] ?? []);
+    final partidas =
+        List.from(previo['partidas'] ?? previo['particiones'] ?? []);
 
     final grupos = <_GrupoFotos>[];
 
     for (final raw in secciones) {
       final s = Map<String, dynamic>.from(raw as Map);
       final id = (s['id'] ?? '').toString();
-      final fotosGrupo = indexados.where((f) => f['bloqueId'] == id).toList();
+      final fotosGrupo =
+          indexados.where((f) => f['bloqueId'] == id).toList();
       ordenarGrupo(fotosGrupo);
       grupos.add(_GrupoFotos(
         id: id,
@@ -132,7 +152,8 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
     for (int i = 0; i < partidas.length; i++) {
       final p = Map<String, dynamic>.from(partidas[i] as Map);
       final id = (p['id'] ?? '').toString();
-      final fotosGrupo = indexados.where((f) => f['bloqueId'] == id).toList();
+      final fotosGrupo =
+          indexados.where((f) => f['bloqueId'] == id).toList();
       ordenarGrupo(fotosGrupo);
       grupos.add(_GrupoFotos(
         id: id,
@@ -143,10 +164,11 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
       ));
     }
 
-    // Fotos que no pertenecen a ninguna seccion/partida conocida.
     final idsConocidos = grupos.map((g) => g.id).toSet();
     final sinAsignar = indexados
-        .where((f) => (f['bloqueId'] ?? '').isEmpty || !idsConocidos.contains(f['bloqueId']))
+        .where((f) =>
+            (f['bloqueId'] ?? '').isEmpty ||
+            !idsConocidos.contains(f['bloqueId']))
         .toList();
     ordenarGrupo(sinAsignar);
     if (sinAsignar.isNotEmpty) {
@@ -179,7 +201,6 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
     final fotos = List<String>.from(previo['fotos'] ?? []);
     final tipos = List<String>.from(previo['fotosTipos'] ?? []);
     final numAverias = tipos.where((t) => t == 'Averia').length;
-
     final gruposVisibles = _filtrarGrupos(_todosLosGrupos);
 
     return Scaffold(
@@ -189,7 +210,6 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
         title: Text(previo['referencia'] ?? 'Detalle del Previo',
             style: const TextStyle(fontWeight: FontWeight.bold)),
         actions: [
-          // Editar previo
           IconButton(
             icon: const Icon(Icons.edit_outlined, color: Colors.white),
             tooltip: 'Editar previo',
@@ -203,157 +223,233 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
               ),
             ),
           ),
-          // PDF
           IconButton(
             icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
             tooltip: 'Generar PDF',
             onPressed: () => _generarPdf(context),
           ),
-          // Exportar / compartir .integra
           IconButton(
             icon: const Icon(Icons.ios_share, color: Colors.white),
             tooltip: 'Exportar / Compartir Previo',
-            onPressed: () => ExportServicePrevio.exportarPrevio(previo, context),
+            onPressed: () =>
+                ExportServicePrevio.exportarPrevio(previo, context),
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // ═══════════ BOTÓN PRINCIPAL: GENERAR REPORTE ═══════════
-          Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.fact_check, color: Colors.white, size: 24),
-              label: const Text(
-                'Generar Reporte de Discrepancia',
-                style: TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.bold),
+      body: CustomScrollView(
+        slivers: [
+          // Botón Generar Reporte
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.fact_check,
+                    color: Colors.white, size: 24),
+                label: const Text(
+                  'Generar Reporte de Discrepancia',
+                  style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  minimumSize: const Size(double.infinity, 56),
+                  elevation: 3,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () => _generarReporte(context),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade700,
-                minimumSize: const Size(double.infinity, 56),
-                elevation: 3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () => _generarReporte(context),
             ),
           ),
 
-          // ═══════════ BANNER DE AVERÍAS ═══════════
-          Container(
-            padding: const EdgeInsets.all(14),
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              color: numAverias > 0 ? Colors.green.shade50 : Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: numAverias > 0 ? Colors.green.shade300 : Colors.orange.shade300,
-                width: 1.5,
-              ),
-            ),
-            child: Row(children: [
-              Icon(
-                numAverias > 0 ? Icons.check_circle_outline : Icons.info_outline,
-                size: 22,
-                color: numAverias > 0 ? Colors.green.shade700 : Colors.orange.shade800,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  numAverias > 0
-                      ? '$numAverias foto${numAverias != 1 ? 's' : ''} de averia se agregaran al reporte.'
-                      : 'Sin fotos de averia. Puedes agregar fotos manualmente en el reporte.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: numAverias > 0 ? Colors.green.shade900 : Colors.orange.shade900,
-                    fontWeight: FontWeight.w500,
-                  ),
+          // Banner de averías
+          SliverToBoxAdapter(
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              decoration: BoxDecoration(
+                color: numAverias > 0
+                    ? Colors.green.shade50
+                    : Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: numAverias > 0
+                      ? Colors.green.shade300
+                      : Colors.orange.shade300,
+                  width: 1.5,
                 ),
               ),
-            ]),
+              child: Row(children: [
+                Icon(
+                  numAverias > 0
+                      ? Icons.check_circle_outline
+                      : Icons.info_outline,
+                  size: 22,
+                  color: numAverias > 0
+                      ? Colors.green.shade700
+                      : Colors.orange.shade800,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    numAverias > 0
+                        ? '$numAverias foto${numAverias != 1 ? 's' : ''} de averia se agregaran al reporte.'
+                        : 'Sin fotos de averia. Puedes agregar fotos manualmente en el reporte.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: numAverias > 0
+                          ? Colors.green.shade900
+                          : Colors.orange.shade900,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ]),
+            ),
           ),
 
-          // ═══════════ DATOS DEL EMBARQUE ═══════════
-          _seccion('Datos del Embarque', Icons.local_shipping),
-          const SizedBox(height: 8),
-          _buildInfoCard(context, [
-            _infoItem(Icons.tag, 'Referencia / Master', previo['referencia']),
-            _infoItem(Icons.business, 'Cliente', previo['cliente']),
-            _infoItem(Icons.warehouse, 'Almacen', previo['almacen']),
-            _infoItem(Icons.numbers, 'House', previo['house']),
-            _infoItem(Icons.calendar_today, 'Fecha', previo['fecha']?.substring(0, 10)),
-            _infoItem(Icons.person_pin_circle_outlined, 'Iniciado por', previo['iniciadoPor']),
-            if ((previo['observaciones'] ?? '').isNotEmpty)
-              _infoItem(Icons.notes, 'Observaciones', previo['observaciones']),
-          ]),
+          // Datos del embarque
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _seccion('Datos del Embarque', Icons.local_shipping),
+                  const SizedBox(height: 8),
+                  _buildInfoCard(context, [
+                    _infoItem(Icons.tag, 'Referencia / Master',
+                        previo['referencia']),
+                    _infoItem(Icons.business, 'Cliente', previo['cliente']),
+                    _infoItem(Icons.warehouse, 'Almacen', previo['almacen']),
+                    _infoItem(Icons.numbers, 'House', previo['house']),
+                    _infoItem(Icons.calendar_today, 'Fecha',
+                        previo['fecha']?.substring(0, 10)),
+                    _infoItem(Icons.person_pin_circle_outlined,
+                        'Iniciado por', previo['iniciadoPor']),
+                    if ((previo['observaciones'] ?? '').isNotEmpty)
+                      _infoItem(Icons.notes, 'Observaciones',
+                          previo['observaciones']),
+                  ]),
+                ],
+              ),
+            ),
+          ),
 
-          const SizedBox(height: 16),
-
-          // ═══════════ DATOS COMPLEMENTARIOS ═══════════
+          // Datos complementarios
           if ((previo['aduana'] ?? '').isNotEmpty ||
               (previo['patente'] ?? '').isNotEmpty ||
               (previo['contenedor'] ?? '').isNotEmpty ||
-              (previo['verificador'] ?? '').isNotEmpty) ...[
-            _seccion('Datos Complementarios', Icons.assignment),
-            const SizedBox(height: 8),
-            _buildInfoCard(context, [
-              if ((previo['aduana'] ?? '').isNotEmpty)
-                _infoItem(Icons.location_on, 'Aduana', previo['aduana']),
-              if ((previo['patente'] ?? '').isNotEmpty)
-                _infoItem(Icons.numbers, 'Patente', previo['patente']),
-              if ((previo['tipoOperacion'] ?? '').isNotEmpty)
-                _infoItem(Icons.swap_horiz, 'Tipo de Operacion', previo['tipoOperacion']),
-              if ((previo['contenedor'] ?? '').isNotEmpty)
-                _infoItem(Icons.inventory_2, 'Contenedor', previo['contenedor']),
-              if ((previo['sello'] ?? '').isNotEmpty)
-                _infoItem(Icons.lock, 'Sello', previo['sello']),
-              if ((previo['verificador'] ?? '').isNotEmpty)
-                _infoItem(Icons.person, 'Verificador', previo['verificador']),
-            ]),
-            const SizedBox(height: 16),
-          ],
-
-          // ═══════════ FOTOGRAFÍAS POR SECCIÓN / PARTIDA ═══════════
-          _seccion('Fotografias (${fotos.length})', Icons.photo_camera),
-          const SizedBox(height: 8),
-
-          if (_todosLosGrupos.isNotEmpty) ...[
-            _buscadorPartidas(),
-            const SizedBox(height: 12),
-          ],
-
-          if (fotos.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(30),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
+              (previo['verificador'] ?? '').isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _seccion('Datos Complementarios', Icons.assignment),
+                    const SizedBox(height: 8),
+                    _buildInfoCard(context, [
+                      if ((previo['aduana'] ?? '').isNotEmpty)
+                        _infoItem(Icons.location_on, 'Aduana',
+                            previo['aduana']),
+                      if ((previo['patente'] ?? '').isNotEmpty)
+                        _infoItem(Icons.numbers, 'Patente',
+                            previo['patente']),
+                      if ((previo['tipoOperacion'] ?? '').isNotEmpty)
+                        _infoItem(Icons.swap_horiz, 'Tipo de Operacion',
+                            previo['tipoOperacion']),
+                      if ((previo['contenedor'] ?? '').isNotEmpty)
+                        _infoItem(Icons.inventory_2, 'Contenedor',
+                            previo['contenedor']),
+                      if ((previo['sello'] ?? '').isNotEmpty)
+                        _infoItem(Icons.lock, 'Sello', previo['sello']),
+                      if ((previo['verificador'] ?? '').isNotEmpty)
+                        _infoItem(Icons.person, 'Verificador',
+                            previo['verificador']),
+                    ]),
+                  ],
+                ),
               ),
-              child: Column(children: [
-                Icon(Icons.photo_library_outlined, size: 48, color: Colors.grey.shade300),
-                const SizedBox(height: 8),
-                Text('No hay fotografias', style: TextStyle(color: Colors.grey.shade500)),
-              ]),
+            ),
+
+          // Encabezado Fotografías
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _seccion(
+                  'Fotografias (${fotos.length})', Icons.photo_camera),
+            ),
+          ),
+
+          // Buscador
+          if (_todosLosGrupos.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _buscadorPartidas(),
+              ),
+            ),
+
+          // Estado vacío o grupos
+          if (fotos.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Container(
+                  padding: const EdgeInsets.all(30),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(children: [
+                    Icon(Icons.photo_library_outlined,
+                        size: 48, color: Colors.grey.shade300),
+                    const SizedBox(height: 8),
+                    Text('No hay fotografias',
+                        style: TextStyle(color: Colors.grey.shade500)),
+                  ]),
+                ),
+              ),
             )
           else if (gruposVisibles.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(30),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Container(
+                  padding: const EdgeInsets.all(30),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(children: [
+                    Icon(Icons.search_off,
+                        size: 48, color: Colors.grey.shade300),
+                    const SizedBox(height: 8),
+                    Text(
+                        'No se encontraron secciones o partidas para "${_buscarCtrl.text}"',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey.shade500)),
+                  ]),
+                ),
               ),
-              child: Column(children: [
-                Icon(Icons.search_off, size: 48, color: Colors.grey.shade300),
-                const SizedBox(height: 8),
-                Text('No se encontraron secciones o partidas para "${_buscarCtrl.text}"',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey.shade500)),
-              ]),
             )
           else
-            ...gruposVisibles.map((g) => _buildGrupoCard(context, g)),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) =>
+                      _buildGrupoCard(context, gruposVisibles[index]),
+                  childCount: gruposVisibles.length,
+                ),
+              ),
+            ),
 
-          const SizedBox(height: 20),
+          // Espacio final
+          const SliverToBoxAdapter(child: SizedBox(height: 20)),
         ],
       ),
     );
@@ -375,7 +471,8 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
             : null,
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Colors.grey.shade300),
@@ -399,7 +496,8 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF2596BE).withValues(alpha: 0.15)),
+        border: Border.all(
+            color: const Color(0xFF2596BE).withValues(alpha: 0.15)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -414,31 +512,41 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
           Row(children: [
             if (g.tipoEtiqueta.isNotEmpty)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: const Color(0xFF2596BE).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(g.tipoEtiqueta,
                     style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2596BE))),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2596BE))),
               )
             else
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text('General',
                     style: TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade700)),
               ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(g.nombre,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87),
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
             ),
             Text('${g.fotos.length} foto${g.fotos.length != 1 ? 's' : ''}',
                 style: const TextStyle(fontSize: 11, color: Colors.grey)),
@@ -448,7 +556,8 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Text('Sin fotos en esta seccion/partida',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                  style:
+                      TextStyle(fontSize: 12, color: Colors.grey.shade500)),
             )
           else
             Builder(builder: (context) {
@@ -461,7 +570,8 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
                     crossAxisSpacing: 8,
                     mainAxisSpacing: 8,
@@ -482,7 +592,8 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
                             borderRadius: BorderRadius.circular(10),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
+                                color:
+                                    Colors.black.withValues(alpha: 0.08),
                                 blurRadius: 4,
                                 offset: const Offset(0, 2),
                               ),
@@ -493,23 +604,23 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
                             child: Stack(
                               fit: StackFit.expand,
                               children: [
-                                if (File(path).existsSync())
-                                  Image.file(
-                                    File(path),
-                                    fit: BoxFit.cover,
-                                    cacheHeight: 220,
-                                    cacheWidth: 220,
-                                  )
-                                else
-                                  Container(
+                                Image.file(
+                                  File(path),
+                                  fit: BoxFit.cover,
+                                  cacheHeight: 180,
+                                  cacheWidth: 180,
+                                  errorBuilder: (_, __, ___) => Container(
                                     color: Colors.grey.shade200,
-                                    child: const Icon(Icons.broken_image, color: Colors.grey, size: 30),
+                                    child: const Icon(Icons.broken_image,
+                                        color: Colors.grey, size: 30),
                                   ),
+                                ),
                                 Positioned(
                                   top: 4,
                                   right: 4,
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
                                       color: color,
                                       borderRadius: BorderRadius.circular(20),
@@ -533,7 +644,11 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
                                       color: Colors.white,
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
-                                      shadows: [Shadow(blurRadius: 3, color: Colors.black)],
+                                      shadows: [
+                                        Shadow(
+                                            blurRadius: 3,
+                                            color: Colors.black)
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -556,7 +671,11 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
                           _gruposExpandidos.add(g.id);
                         }
                       }),
-                      icon: Icon(expandido ? Icons.expand_less : Icons.expand_more, size: 18),
+                      icon: Icon(
+                          expandido
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          size: 18),
                       label: Text(expandido
                           ? 'Mostrar menos'
                           : 'Ver todas (${g.fotos.length} fotos)'),
@@ -619,10 +738,16 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500)),
+                style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.w500)),
             const SizedBox(height: 2),
             Text(val,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87)),
           ],
         ),
       ),
@@ -658,7 +783,8 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
 
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => NuevoReporteScreen(reporteInicial: reporteInicial)),
+      MaterialPageRoute(
+          builder: (_) => NuevoReporteScreen(reporteInicial: reporteInicial)),
     );
   }
 
@@ -668,13 +794,16 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
       barrierDismissible: false,
       builder: (_) => Center(
         child: Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: const Padding(
             padding: EdgeInsets.all(32),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               CircularProgressIndicator(color: Color(0xFF2596BE)),
               SizedBox(height: 16),
-              Text('Generando PDF...', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+              Text('Generando PDF...',
+                  style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
             ]),
           ),
         ),
@@ -696,13 +825,17 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
           appBar: AppBar(
             backgroundColor: Colors.black,
             elevation: 0,
-            title: Text(tipo, style: TextStyle(color: _colorTipo(tipo), fontWeight: FontWeight.bold)),
+            title: Text(tipo,
+                style: TextStyle(
+                    color: _colorTipo(tipo), fontWeight: FontWeight.bold)),
           ),
           body: InteractiveViewer(
             child: Center(
-              child: File(path).existsSync()
-                  ? Image.file(File(path))
-                  : const Icon(Icons.broken_image, color: Colors.white, size: 60),
+              child: Image.file(
+                File(path),
+                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image,
+                    color: Colors.white, size: 60),
+              ),
             ),
           ),
         ),
@@ -726,7 +859,9 @@ class _PrevioDetalleScreenState extends State<PrevioDetalleScreen> {
         const SizedBox(width: 10),
         Text(titulo,
             style: const TextStyle(
-                fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2596BE))),
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2596BE))),
         const SizedBox(width: 8),
         Expanded(child: Divider(color: Colors.grey.shade200)),
       ]),

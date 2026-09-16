@@ -6,7 +6,9 @@
 //   Acepta un [reporteInicial] opcional para pre-llenar campos
 //   cuando se genera desde un previo existente. Si no se pasa,
 //   el formulario inicia vacío (nuevo reporte manual).
-//   Al guardar, también ofrece exportar el .integra directamente.
+//
+//   [COMENTADO] Se removió el botón "Guardar y Exportar a Web App".
+//   El botón de exportar .integra se movió al detalle del reporte.
 // ============================================================
 
 import 'dart:io';
@@ -16,7 +18,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../models/reporte.dart';
-import '../services/export_service.dart';
+// [COMENTADO] import '../services/export_service.dart';
 import '../utils/image_helper.dart';
 import '../widgets/hallazgo_form_row.dart';
 import '../widgets/seccion_header.dart';
@@ -283,7 +285,7 @@ class _NuevoReporteScreenState extends State<NuevoReporteScreen> {
   void _eliminarHallazgo(int i) => setState(() => _hallazgos.removeAt(i));
 
   // ── GUARDAR ─────────────────────────────────────────────────
-  Future<void> _guardarReporte({bool exportarDespues = false}) async {
+  Future<void> _guardarReporte() async {
     if (_referenciaCtrl.text.trim().isEmpty) {
       _error('Ingresa la referencia del pedimento.');
       return;
@@ -297,28 +299,6 @@ class _NuevoReporteScreenState extends State<NuevoReporteScreen> {
     try {
       final reporte = _buildReporte();
       await Hive.box('reportes').put(reporte.id, reporte.toMap());
-
-      if (exportarDespues && mounted) {
-        // Guardar y luego exportar de inmediato
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => const Center(
-            child: Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  CircularProgressIndicator(color: Colors.green),
-                  SizedBox(height: 12),
-                  Text('Preparando archivo para Web App...'),
-                ]),
-              ),
-            ),
-          ),
-        );
-        await ExportService.exportarReporte(reporte, context);
-        if (mounted) Navigator.pop(context); // Cerrar loading
-      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -417,7 +397,7 @@ class _NuevoReporteScreenState extends State<NuevoReporteScreen> {
             : 'Nuevo Reporte'),
         actions: [
           TextButton(
-            onPressed: _isSaving ? null : () => _guardarReporte(),
+            onPressed: _isSaving ? null : _guardarReporte,
             child: const Text('GUARDAR',
                 style: TextStyle(color: Colors.white, fontSize: 16)),
           ),
@@ -555,7 +535,7 @@ class _NuevoReporteScreenState extends State<NuevoReporteScreen> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  '${avCount} foto(s) de avería pre-cargadas desde el previo. '
+                  '$avCount foto(s) de avería pre-cargadas desde el previo. '
                   'Puedes agregar más.',
                   style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
                 ),
@@ -584,7 +564,7 @@ class _NuevoReporteScreenState extends State<NuevoReporteScreen> {
             const SizedBox(height: 28),
 
             // ═══ BOTONES DE ACCIÓN ════════════════════════════
-            // Guardar normal
+            // Guardar
             ElevatedButton.icon(
               icon: const Icon(Icons.save_alt, color: Colors.white, size: 22),
               label: Text(_isSaving ? 'Guardando...' : 'Guardar Reporte',
@@ -593,25 +573,31 @@ class _NuevoReporteScreenState extends State<NuevoReporteScreen> {
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              onPressed: _isSaving ? null : () => _guardarReporte(),
+              onPressed: _isSaving ? null : _guardarReporte,
             ),
-            const SizedBox(height: 10),
-            // Guardar y exportar (para oficina)
-            OutlinedButton.icon(
-              icon: const Icon(Icons.upload_file, color: Colors.green),
-              label: const Text(
-                'Guardar y Exportar a Web App',
-                style: TextStyle(
-                    fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                side: const BorderSide(color: Colors.green, width: 2),
-              ),
-              onPressed: _isSaving
-                  ? null
-                  : () => _guardarReporte(exportarDespues: true),
-            ),
+
+            // [COMENTADO] Botón "Guardar y Exportar a Web App".
+            // Se puede reactivar cuando exista la Web App de oficina.
+            // El botón de exportar .integra está disponible en el
+            // detalle del reporte, ya guardado.
+            //
+            // const SizedBox(height: 10),
+            // OutlinedButton.icon(
+            //   icon: const Icon(Icons.upload_file, color: Colors.green),
+            //   label: const Text(
+            //     'Guardar y Exportar a Web App',
+            //     style: TextStyle(
+            //         fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold),
+            //   ),
+            //   style: OutlinedButton.styleFrom(
+            //     padding: const EdgeInsets.symmetric(vertical: 14),
+            //     side: const BorderSide(color: Colors.green, width: 2),
+            //   ),
+            //   onPressed: _isSaving
+            //       ? null
+            //       : () => _guardarReporte(exportarDespues: true),
+            // ),
+
             const SizedBox(height: 20),
           ],
         ),
