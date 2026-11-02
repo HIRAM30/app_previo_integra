@@ -22,7 +22,10 @@ dependencies:
   intl: ^0.19.0
   file_picker: ^8.1.4
   archive: ^4.0.0
-  receive_sharing_intent: ^1.8.0
+  receive_sharing_intent:
+    git:
+      url: https://github.com/KasemJaffer/receive_sharing_intent
+      ref: 2cea396843cd3ab1b5ec4334be4233864637874e
 
 dev_dependencies:
   flutter_test:

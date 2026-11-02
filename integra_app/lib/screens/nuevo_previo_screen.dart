@@ -551,12 +551,14 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen>
       _snack('Selecciona primero una Seccion o Partida');
       return;
     }
-    await showModalBottomSheet(
+    final destinoNombre = _destinoActivoNombre ?? 'Partida';
+    final int? agregadas = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _FotoContinuaSheet(
-        onFotoCapturada: (File file, String tipo, String desc) async {
+        destinoNombre: destinoNombre,
+        onFotoCapturada: (File file, String tipo, String desc) {
           setState(() {
             _fotos.add({
               'file': file,
@@ -565,6 +567,20 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen>
               'descripcion': desc,
               'bloqueId': _destinoActivoId,
             });
+          });
+          _marcarDirty();
+        },
+        onFotosCapturadas: (List<File> files, String tipo, String desc) {
+          setState(() {
+            for (final file in files) {
+              _fotos.add({
+                'file': file,
+                'ruta': file.path,
+                'tipo': tipo,
+                'descripcion': desc,
+                'bloqueId': _destinoActivoId,
+              });
+            }
           });
           _marcarDirty();
         },
@@ -581,6 +597,12 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen>
         },
       ),
     );
+
+    if (agregadas != null && agregadas > 0 && mounted) {
+      _snack(agregadas == 1
+          ? 'Foto agregada a $destinoNombre'
+          : '$agregadas fotos agregadas a $destinoNombre');
+    }
   }
 
   Future<void> _editarDescripcion(int index) async {
@@ -990,6 +1012,31 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen>
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
 
+          if (_destinoActivoId != null) ...[
+            const SizedBox(height: 10),
+            Center(
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.add_a_photo, color: Colors.white, size: 18),
+                label: Text(
+                  'Agregar fotos a ${_destinoActivoNombre ?? 'Destino'}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2596BE),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: _agregarFotos,
+              ),
+            ),
+          ],
+
           if (_fotos.isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(
@@ -1282,15 +1329,22 @@ class _NuevoPrevioScreenState extends State<NuevoPrevioScreen>
 }
 
 // ═══════════════════════════════════════════════════════════
-// Sheet de captura continua
+// Sheet de captura de fotos (cámara directa y galería múltiple)
 // ═══════════════════════════════════════════════════════════
 class _FotoContinuaSheet extends StatefulWidget {
+  final String destinoNombre;
   final Function(File file, String tipo, String descripcion) onFotoCapturada;
+  final Function(List<File> files, String tipo, String descripcion)?
+      onFotosCapturadas;
   final void Function(String ruta, String tipoDetectado)? onTipoDetectado;
+
   const _FotoContinuaSheet({
+    required this.destinoNombre,
     required this.onFotoCapturada,
+    this.onFotosCapturadas,
     this.onTipoDetectado,
   });
+
   @override
   State<_FotoContinuaSheet> createState() => _FotoContinuaSheetState();
 }
@@ -1298,7 +1352,7 @@ class _FotoContinuaSheet extends StatefulWidget {
 class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
   String _tipo = 'Mercancia';
   bool _cargando = false;
-  int _total = 0;
+  String _mensajeCarga = '';
   final _descCtrl = TextEditingController();
 
   @override
@@ -1313,20 +1367,31 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
     return Colors.orange.shade700;
   }
 
-  Future<void> _tomar(ImageSource source) async {
+  /// Toma una foto con la cámara y la agrega inmediatamente sin pedir confirmación.
+  Future<void> _tomarFotoCamara() async {
     if (_cargando) return;
-    setState(() => _cargando = true);
+    setState(() {
+      _cargando = true;
+      _mensajeCarga = 'Abriendo cámara...';
+    });
     try {
       final picker = ImagePicker();
       final picked = await picker.pickImage(
-        source: source,
+        source: ImageSource.camera,
         imageQuality: _tipo == 'Documento' ? 92 : 82,
         maxWidth: _tipo == 'Documento' ? 1800 : 1600,
         maxHeight: _tipo == 'Documento' ? 1800 : 1600,
       );
-      if (picked == null) return;
-      final original = File(picked.path);
+      if (picked == null) {
+        if (mounted) setState(() => _cargando = false);
+        return;
+      }
 
+      if (mounted) {
+        setState(() => _mensajeCarga = 'Procesando foto...');
+      }
+
+      final original = File(picked.path);
       File? processed;
       if (_tipo == 'Documento') {
         processed = await ImageHelper.compressDocument(original);
@@ -1337,10 +1402,6 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
       if (processed != null) {
         final desc = _descCtrl.text.trim();
         widget.onFotoCapturada(processed, _tipo, desc);
-        setState(() {
-          _total++;
-          _descCtrl.clear();
-        });
 
         if (_tipo == 'Documento' && widget.onTipoDetectado != null) {
           final rutaParaCallback = processed.path;
@@ -1350,14 +1411,96 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
             onResultado: (tipoDetectado) => cb(rutaParaCallback, tipoDetectado),
           );
         }
+
+        // Se agrega directamente de una sola vez sin pedir confirmación
+        if (mounted) {
+          Navigator.pop(context, 1);
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text('Error al tomar foto: $e')));
       }
     } finally {
-      if (mounted) setState(() => _cargando = false);
+      if (mounted && _cargando) {
+        setState(() => _cargando = false);
+      }
+    }
+  }
+
+  /// Permite seleccionar múltiples imágenes de la galería y agregarlas todas de una vez.
+  Future<void> _elegirFotosGaleria() async {
+    if (_cargando) return;
+    setState(() {
+      _cargando = true;
+      _mensajeCarga = 'Abriendo galería...';
+    });
+    try {
+      final picker = ImagePicker();
+      final pickedList = await picker.pickMultiImage(
+        imageQuality: _tipo == 'Documento' ? 92 : 82,
+        maxWidth: _tipo == 'Documento' ? 1800 : 1600,
+        maxHeight: _tipo == 'Documento' ? 1800 : 1600,
+      );
+      if (pickedList.isEmpty) {
+        if (mounted) setState(() => _cargando = false);
+        return;
+      }
+
+      final total = pickedList.length;
+      final desc = _descCtrl.text.trim();
+      final procesadas = <File>[];
+
+      for (int i = 0; i < total; i++) {
+        if (!mounted) break;
+        setState(() {
+          _mensajeCarga = 'Procesando foto ${i + 1} de $total...';
+        });
+
+        final original = File(pickedList[i].path);
+        File? processed;
+        if (_tipo == 'Documento') {
+          processed = await ImageHelper.compressDocument(original);
+        } else {
+          processed = await ImageHelper.compressImage(original);
+        }
+
+        if (processed != null) {
+          procesadas.add(processed);
+          if (widget.onFotosCapturadas == null) {
+            widget.onFotoCapturada(processed, _tipo, desc);
+          }
+
+          if (_tipo == 'Documento' && widget.onTipoDetectado != null) {
+            final rutaParaCallback = processed.path;
+            final cb = widget.onTipoDetectado!;
+            ImageHelper.detectarTipoEnBackground(
+              processed,
+              onResultado: (tipoDetectado) =>
+                  cb(rutaParaCallback, tipoDetectado),
+            );
+          }
+        }
+      }
+
+      if (widget.onFotosCapturadas != null && procesadas.isNotEmpty) {
+        widget.onFotosCapturadas!(procesadas, _tipo, desc);
+      }
+
+      // Se agregan todas de una sola vez y se cierra el selector
+      if (mounted) {
+        Navigator.pop(context, procesadas.length);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al cargar fotos: $e')));
+      }
+    } finally {
+      if (mounted && _cargando) {
+        setState(() => _cargando = false);
+      }
     }
   }
 
@@ -1378,24 +1521,39 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
                   color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('Agregar Fotos',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            if (_total > 0)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.shade300)),
-                child: Text('$_total capturada${_total != 1 ? 's' : ''}',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.green.shade700,
-                        fontWeight: FontWeight.bold)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Agregar Fotos',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    if (widget.destinoNombre.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          'Destino: ${widget.destinoNombre}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _color,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-          ]),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.grey),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
           const SizedBox(height: 14),
           const Align(
               alignment: Alignment.centerLeft,
@@ -1444,57 +1602,63 @@ class _FotoContinuaSheetState extends State<_FotoContinuaSheet> {
             ),
             onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           if (_cargando)
             Padding(
                 padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  CircularProgressIndicator(color: _color),
-                  const SizedBox(width: 14),
-                  const Text('Procesando foto...',
-                      style: TextStyle(fontSize: 14)),
-                ]))
+                child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: _color),
+                      const SizedBox(width: 14),
+                      Text(
+                        _mensajeCarga.isNotEmpty
+                            ? _mensajeCarga
+                            : 'Procesando...',
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                    ]))
           else ...[
             ElevatedButton.icon(
               icon: const Icon(Icons.camera_alt, color: Colors.white),
               label: const Text('Tomar foto con camara',
-                  style: TextStyle(color: Colors.white, fontSize: 15)),
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                   backgroundColor: _color,
                   minimumSize: const Size(double.infinity, 52),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10))),
-              onPressed: () => _tomar(ImageSource.camera),
+              onPressed: _tomarFotoCamara,
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
               icon: Icon(Icons.photo_library, color: _color),
-              label: Text('Elegir de galeria',
-                  style: TextStyle(color: _color, fontSize: 15)),
+              label: Text('Elegir de galeria (varias a la vez)',
+                  style: TextStyle(
+                      color: _color,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold)),
               style: OutlinedButton.styleFrom(
                   side: BorderSide(color: _color, width: 2),
                   minimumSize: const Size(double.infinity, 52),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10))),
-              onPressed: () => _tomar(ImageSource.gallery),
+              onPressed: _elegirFotosGaleria,
             ),
-          ],
-          const SizedBox(height: 12),
-          SizedBox(
+            const SizedBox(height: 8),
+            SizedBox(
               width: double.infinity,
               child: TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text(
-                    _total > 0
-                        ? 'Listo — $_total foto${_total != 1 ? 's' : ''} agregada${_total != 1 ? 's' : ''}'
-                        : 'Cancelar',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: _total > 0
-                            ? Colors.green.shade700
-                            : Colors.grey)),
-              )),
+                child: const Text('Cancelar',
+                    style: TextStyle(fontSize: 14, color: Colors.grey)),
+              ),
+            ),
+          ],
         ]),
       ),
     );
